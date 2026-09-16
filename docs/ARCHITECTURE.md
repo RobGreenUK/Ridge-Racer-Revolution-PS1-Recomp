@@ -129,8 +129,15 @@ changes still update at source rate.
 [mesh.h](../src/scene/mesh.h) decodes geometry and live material changes.
 [texture_data.h](../src/scene/texture_data.h) caches page/palette signatures,
 ignores irrelevant live-page changes for resident indexed textures and expands
-palette colours once per decode. Dirty textures are uploaded when visible;
+palette colours once per decode. HUD, background and world share each update's
+page-signature caches, and palette/window variants use a persistent keyed index. Dirty textures are uploaded when visible;
 legitimate updates still use full synchronous texture uploads.
+
+Static groups of 64 quads and model instances have conservative bounds, tested
+using the active main/mirror projection before processing their triangles. Material
+ordering uses an explicit original-face-order tie-breaker to preserve equal-key
+draw order without stable-sort scratch allocation. See the performance comparison
+and synthetic regression in `tests/renderer_parity.cpp`.
 
 [depth_renderer.h](../src/scene/depth_renderer.h) batches a streaming vertex buffer
 and preserves SDL/OpenGL state. Authored road layers currently use a depth tolerance;
