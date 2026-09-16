@@ -114,6 +114,7 @@ struct ServiceView: View {
     @StateObject private var model = ServiceModel()
     @State private var tab = "Display"
     @State private var nativeWidthInput = ""
+    @State private var nativeHeightInput = ""
     private let accent = Color(red: 0.98, green: 0.35, blue: 0.17)
     func alignNativeResolution() {
         guard model.settings.nativeScene else { return }
@@ -122,15 +123,22 @@ struct ServiceView: View {
         let units = max((240+b-1)/b, min(min(7680/a,4320/b),Int((Double(model.settings.nativeHeight)/Double(b)).rounded())))
         model.settings.nativeWidth = units*a; model.settings.nativeHeight = units*b
     }
-    func applyNativeWidth() {
-        guard let value = Int(nativeWidthInput) else {
-            model.error = "Enter a whole-number rendering width."; return
+    func syncNativeResolutionInputs() {
+        nativeWidthInput = String(model.settings.nativeWidth)
+        nativeHeightInput = String(model.settings.nativeHeight)
+    }
+    func applyNativeResolution() {
+        guard let width = Int(nativeWidthInput), let height = Int(nativeHeightInput),
+              (320...7680).contains(width), (240...4320).contains(height) else {
+            model.error = "Enter whole-number dimensions: horizontal 320–7680, vertical 240–4320 pixels."; return
         }
         let a = model.settings.nativeAspect == "4:3" ? 4 : 16
         let b = model.settings.nativeAspect == "4:3" ? 3 : 9
-        let units = max((240+b-1)/b,min(min(7680/a,4320/b),Int((Double(value)/Double(a)).rounded())))
-        model.settings.nativeWidth = units*a; model.settings.nativeHeight = units*b
-        nativeWidthInput = String(model.settings.nativeWidth)
+        guard width * b == height * a else {
+            model.error = "Enter dimensions matching the selected \(model.settings.nativeAspect) aspect ratio, or change the aspect ratio first."; return
+        }
+        model.settings.nativeWidth = width; model.settings.nativeHeight = height
+        syncNativeResolutionInputs()
     }
     var nativeResolution: some View {
         let a = model.settings.nativeAspect == "4:3" ? 4 : 16
@@ -144,19 +152,30 @@ struct ServiceView: View {
             Picker("Render resolution", selection: selection) {
                 ForEach(widths, id: \.self) { width in Text("\(width) × \(width/a*b)").tag(width) }
             }
-            HStack {
-                Text("Custom width")
+            HStack(alignment: .lastTextBaseline, spacing: 10) {
+                Text("Custom resolution")
                 Spacer()
-                TextField("Pixels", text: $nativeWidthInput)
-                    .labelsHidden().accessibilityLabel("Custom rendering width in pixels")
-                    .frame(width: 100).textFieldStyle(.roundedBorder).onSubmit { applyNativeWidth() }
-                Button("Apply") { applyNativeWidth() }
-                Text("× \(model.settings.nativeHeight)")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Horizontal").font(.caption).foregroundStyle(.secondary)
+                    TextField("Width", text: $nativeWidthInput)
+                        .labelsHidden().accessibilityLabel("Horizontal resolution in pixels")
+                        .textFieldStyle(.roundedBorder).onSubmit { applyNativeResolution() }
+                }.frame(width: 100)
+                Text("×")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Vertical").font(.caption).foregroundStyle(.secondary)
+                    TextField("Height", text: $nativeHeightInput)
+                        .labelsHidden().accessibilityLabel("Vertical resolution in pixels")
+                        .textFieldStyle(.roundedBorder).onSubmit { applyNativeResolution() }
+                }.frame(width: 100)
+                Button("Apply") { applyNativeResolution() }
             }
-            note("Only \(model.settings.nativeAspect) resolutions are available. Apply a custom width to calculate a matching height. Internal rendering resolution; display scaling is separate.")
-        }.onAppear { nativeWidthInput = String(model.settings.nativeWidth) }
-            .onChange(of: model.settings.nativeWidth) { value in nativeWidthInput = String(value) }
+            note("Enter horizontal × vertical pixels matching the selected \(model.settings.nativeAspect) aspect ratio, then Apply. Internal rendering resolution; display scaling is separate.")
+        }.onAppear { syncNativeResolutionInputs() }
+            .onChange(of: model.settings.nativeWidth) { _ in syncNativeResolutionInputs() }
+            .onChange(of: model.settings.nativeHeight) { _ in syncNativeResolutionInputs() }
     }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {

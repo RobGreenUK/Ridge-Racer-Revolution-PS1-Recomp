@@ -38,3 +38,7 @@ Preferences are in `build-macos/settings.toml`; mod state is under
 must not be replaced with Ridge Racer's settings or saves. Diagnostics are under
 `diagnostics/`. Preserve these local files when rebuilding, and do not upload
 captures or game-derived data to the source repository.
+
+Custom render resolution is entered as **Horizontal × Vertical**, followed by
+**Apply**. Both dimensions are editable and must match the selected 4:3 or 16:9
+aspect ratio. Invalid dimensions leave the applied resolution unchanged.
