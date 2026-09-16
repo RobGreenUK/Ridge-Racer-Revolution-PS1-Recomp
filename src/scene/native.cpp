@@ -146,7 +146,7 @@ if(e.type==SDL_EVENT_KEY_DOWN&&!e.key.repeat&&e.key.key==SDLK_G)showGraph=!showG
             previousSequence=s.sequence;previousCycles=s.cycles;previousPublication=bridge.published;
         }
         bool ready=s.valid&&(!frozenSnapshot.empty()||bridge.sourceAgeSeconds()<.5);
-        bool measureRender=!metricsPath.empty();
+        bool measureRender=!metricsPath.empty()&&(count%2==0);
         if(measureRender)renderTimer.begin(count);
         if(changed){
             ready=s.valid;
@@ -156,7 +156,9 @@ if(e.type==SDL_EVENT_KEY_DOWN&&!e.key.repeat&&e.key.key==SDLK_G)showGraph=!showG
                 current=decode(s,false);currentMirror=decode(s,true);
                 for(const auto&pose:current.models){auto found=std::find_if(currentMirror.models.begin(),currentMirror.models.end(),[&](const ModelPose&m){return m.key==pose.key&&m.model==pose.model;});if(found==currentMirror.models.end())currentMirror.models.push_back(pose);}
                 timeline.push(current,bridge.published/1e9);mirrorTimeline.push(currentMirror,bridge.published/1e9);
-                std::vector<uint16_t>vram(s.vram,s.vram+524288);hud.updateVram(mesh->sky.vram,vram);sky.updateVram(mesh->sky.vram,vram);mesh->updateVram(vram);
+                std::vector<uint16_t>vram(s.vram,s.vram+524288);
+                TextureSignatures before{mesh->sky.vram,{}},after{vram,{}};
+                hud.updateVram(before,after);sky.updateVram(before,after);mesh->updateVram(vram,before,after);
             }else{
                 timeline.clear();mirrorTimeline.clear();
                 if(s.screen_width&&s.screen_height){
@@ -168,7 +170,7 @@ if(e.type==SDL_EVENT_KEY_DOWN&&!e.key.repeat&&e.key.key==SDLK_G)showGraph=!showG
             }
         }
         if(!raised&&(ready||screen)){SDL_ShowWindow(w);SDL_RaiseWindow(w);raised=true;}
-        if(mesh){mesh->depthRenderer.measureGpu=false;mesh->depthRenderer.frameId=count;}
+        if(mesh){mesh->resetFrameStats();mesh->depthRenderer.measureGpu=!metricsPath.empty()&&!measureRender;mesh->depthRenderer.frameId=count;}
         double sourceAge=bridge.sourceAgeSeconds();auto drawStart=SDL_GetTicksNS();Frame f=current,m=currentMirror;PresentationSampleInfo sampleInfo;
         if(frozenSnapshot.empty()&&bridge.published){f=timeline.at(presentationWall,1/effective,&sampleInfo);m=mirrorTimeline.at(presentationWall,1/effective);}
         SDL_SetRenderTarget(r,target);SDL_SetRenderDrawColor(r,0,16,128,255);SDL_RenderClear(r);
@@ -178,6 +180,9 @@ if(e.type==SDL_EVENT_KEY_DOWN&&!e.key.repeat&&e.key.key==SDLK_G)showGraph=!showG
             // Composite the mirror before HUD lettering and its border.
             if(s.mirror_enabled&&s.state==17){
                 SDL_SetRenderTarget(r,mirrorTarget);SDL_SetRenderDrawColor(r,32,96,180,255);SDL_RenderClear(r);
+                // Depth-only GPU samples cover the main view; the alternate
+                // render-wide query covers main, mirror, HUD and final flush.
+                mesh->depthRenderer.measureGpu=false;
                 mesh->focalScale=8;mesh->draw(r,m,m.camera,mw,mh);mesh->focalScale=320.f/240;
                 SDL_SetRenderTarget(r,target);float scale=height/240.f;SDL_FRect area{(width-176*scale)/2,16*scale,176*scale,40*scale};SDL_RenderTextureRotated(r,mirrorTarget,nullptr,&area,0,nullptr,SDL_FLIP_HORIZONTAL);
             }
@@ -211,7 +216,12 @@ if(e.type==SDL_EVENT_KEY_DOWN&&!e.key.repeat&&e.key.key==SDLK_G)showGraph=!showG
         // SDL timestamps share the CSV wall_s epoch, not CLOCK_MONOTONIC's epoch.
         detail.swapStartWall=double(swap-start)/1e9;detail.swapEndWall=double(end-start)/1e9;
         detail.bracketStart=sampleInfo.bracketStart;detail.bracketEnd=sampleInfo.bracketEnd;
-        detail.held=sampleInfo.held;detail.sequenceGaps=sequenceGaps;detail.sourceStep=sourceStepMs;detail.publicationStep=publicationStepMs;detail.sourceChanged=changed;detail.sourceGame=double(s.cycles)/33868800.;detail.interpolationAlpha=sampleInfo.alpha;detail.interpolationTarget=sampleInfo.target;detail.sourceAgeStart=sourceAgeStart;detail.gap=count?double(now-lastPresentEnd)/1e6:0;detail.events=eventMs;detail.input=double(readStart-inputStart)/1e6;detail.sleep=sleepMs;detail.displayWait=waitMs;detail.displayWaitTimeouts=waitTimeouts;detail.previousRecord=previousRecord;detail.renderFlush=double(swap-present)/1e6;detail.swap=double(end-swap)/1e6;detail.gpuRender=renderTimer.ms;detail.gpuRenderFrame=renderTimer.frame;detail.phase=s.state;detail.graph=showGraph;detail.focused=(SDL_GetWindowFlags(w)&SDL_WINDOW_INPUT_FOCUS)!=0;
+        detail.held=sampleInfo.held;detail.sequenceGaps=sequenceGaps;detail.sourceStep=sourceStepMs;detail.publicationStep=publicationStepMs;detail.sourceChanged=changed;detail.sourceGame=double(s.cycles)/33868800.;detail.interpolationAlpha=sampleInfo.alpha;detail.interpolationTarget=sampleInfo.target;detail.sourceAgeStart=sourceAgeStart;detail.gap=count?double(now-lastPresentEnd)/1e6:0;detail.events=eventMs;detail.input=double(readStart-inputStart)/1e6;detail.sleep=sleepMs;detail.displayWait=waitMs;detail.displayWaitTimeouts=waitTimeouts;detail.previousRecord=previousRecord;detail.renderFlush=double(swap-present)/1e6;detail.swap=double(end-swap)/1e6;if(measureRender){detail.gpuRender=renderTimer.ms;detail.gpuRenderFrame=renderTimer.frame;}detail.phase=s.state;detail.graph=showGraph;detail.focused=(SDL_GetWindowFlags(w)&SDL_WINDOW_INPUT_FOCUS)!=0;
+        if(ready&&mesh){
+            detail.meshBuild=mesh->buildMs;detail.textureUpload=mesh->uploadMs;detail.sort=mesh->sortMs;detail.depth=mesh->depthMs;
+            detail.candidates=mesh->candidateTriangles;detail.faces=mesh->renderedFaces;detail.chunksCulled=mesh->culledChunks;detail.modelsCulled=mesh->culledModels;
+            if(!measureRender&&!metricsPath.empty()){detail.gpuMs=mesh->depthRenderer.gpuMs;detail.gpuFrame=mesh->depthRenderer.gpuFrame;}
+        }
         auto recordStart=SDL_GetTicksNS();
         metrics.record(count,elapsed,count?double(now-last)/1e6:0,count?std::max(0.,double(now-last)/1e6-1000/effective):0,double(drawStart-readStart)/1e6,0,0,double(present-drawStart)/1e6-markerMs,double(end-present)/1e6,ready,s.sequence,sourceAge*1000,f.models.size(),mesh?mesh->textureUpdates:0,f.camera.x,f.camera.y,f.camera.z,f.time,marker,markerMs,detail);
         previousRecord=double(SDL_GetTicksNS()-recordStart)/1e6;lastPresentEnd=end;eventMs=waitMs=sleepMs=0;last=now;count++;

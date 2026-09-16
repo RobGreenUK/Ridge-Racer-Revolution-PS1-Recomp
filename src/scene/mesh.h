@@ -4,12 +4,39 @@
 #include "geometry.h"
 #include "texture_data.h"
 #include "depth_renderer.h"
+#include <tuple>
+#include <map>
 struct MeshQuad { MeshVertex v[4]; uint32_t texture,kind; int32_t bias;uint32_t window=0,dayOnly=0; };
 inline bool nightScenery(const Frame&){return false;}
 struct CourseMesh {
     bool fullCourse=true,perspective=true,smooth=false;float focalScale=320.f/240;
-    struct Face {float depth;uint32_t texture;int32_t bias;float layerOffset;std::array<MeshVertex,3> vertices;};
+    struct Face {float depth;uint32_t texture;int32_t bias;float layerOffset;std::array<MeshVertex,3> vertices;size_t order;};
     std::vector<Face> faces;
+    double buildMs=0,uploadMs=0,sortMs=0,depthMs=0;
+    unsigned candidateTriangles=0,culledChunks=0,culledModels=0,renderedFaces=0;
+    struct Bounds {
+        Vec low{INFINITY,INFINITY,INFINITY},high{-INFINITY,-INFINITY,-INFINITY};
+        void add(Vec p){low={std::min(low.x,p.x),std::min(low.y,p.y),std::min(low.z,p.z)};high={std::max(high.x,p.x),std::max(high.y,p.y),std::max(high.z,p.z)};}
+        bool visible(const Frame&frame,Vec camera,const ModelPose*pose,int width,int height,float focalScale)const{
+            if(!std::isfinite(low.x))return false;
+            bool outside[5]={true,true,true,true,true};float focal=height*focalScale,sx=width*.5f/focal,sy=height*.5f/focal;
+            for(int i=0;i<8;i++){
+                Vec v{i&1?high.x:low.x,i&2?high.y:low.y,i&4?high.z:low.z};
+                if(pose){const auto&m=pose->matrix;v=pose->position+Vec{m[0]*v.x+m[1]*v.y+m[2]*v.z,m[3]*v.x+m[4]*v.y+m[5]*v.z,m[6]*v.x+m[7]*v.y+m[8]*v.z};}
+                v=rotate(frame.rotation,v-camera);
+                // Conservative margin avoids precision differences at boundaries.
+                outside[0]&=v.z<12;outside[1]&=v.x+sx*v.z < -8;outside[2]&=sx*v.z-v.x < -8;
+                outside[3]&=v.y+sy*v.z < -8;outside[4]&=sy*v.z-v.y < -8;
+            }
+            for(bool rejected:outside)if(rejected)return false;return true;
+        }
+    };
+    static constexpr size_t chunkSize=64;
+    std::vector<Bounds>chunkBounds,modelBounds;
+    void resetFrameStats(){
+        buildMs=uploadMs=sortMs=depthMs=0;
+        candidateTriangles=culledChunks=culledModels=renderedFaces=textureUpdates=0;
+    }
     unsigned textureUpdates=0;
     std::vector<uint8_t> uploadPixels;
     SkyRenderer sky;
@@ -18,6 +45,8 @@ struct CourseMesh {
     std::vector<MeshQuad> quads;
     std::vector<std::pair<int32_t,uint32_t>>textureKeys;
     std::vector<std::vector<MeshQuad>> models;
+    using PaletteKey=std::tuple<int32_t,uint32_t,uint32_t,bool>;
+    std::map<PaletteKey,uint32_t>paletteLookup;size_t indexedTextures=0;
     std::vector<uint32_t>textureWindows;
     std::vector<bool> textureDirty;
     std::vector<std::vector<uint16_t>> residentTexels;
@@ -63,13 +92,25 @@ struct CourseMesh {
                 textureDirty[i]=true;
             }
         }
+        buildBounds();
+    }
+    void buildBounds(){
+        chunkBounds.assign((quads.size()+chunkSize-1)/chunkSize,Bounds{});
+        for(size_t i=0;i<quads.size();i++)for(const auto&v:quads[i].v)chunkBounds[i/chunkSize].add(v.position);
+        modelBounds.assign(models.size(),Bounds{});
+        for(size_t i=0;i<models.size();i++)for(const auto&q:models[i])for(const auto&v:q.v)modelBounds[i].add(v.position);
+        faces.reserve(quads.size()*2);
     }
     uint32_t paletteTexture(SDL_Renderer*renderer,uint32_t base,uint32_t packed,uint32_t window=0) {
         if(base>=textureKeys.size())return base;
         auto key=textureKeys[base];if(key.first<0)return base;
         key.second=packed>>16;
         bool resident=base<residentTexels.size()&&!residentTexels[base].empty();
-        for(size_t i=0;i<textureKeys.size();i++)if(textureKeys[i]==key&&(i<textureWindows.size()?textureWindows[i]:0)==window&&resident==(i<residentTexels.size()&&!residentTexels[i].empty()))return uint32_t(i);
+        while(indexedTextures<textureKeys.size()){
+            size_t i=indexedTextures++;
+            paletteLookup.emplace(PaletteKey{textureKeys[i].first,textureKeys[i].second,i<textureWindows.size()?textureWindows[i]:0,i<residentTexels.size()&&!residentTexels[i].empty()},uint32_t(i));
+        }
+        auto found=paletteLookup.find(PaletteKey{key.first,key.second,window,resident});if(found!=paletteLookup.end())return found->second;
         if(textures.size()>=4096)throw std::runtime_error("too many model palettes");
         auto source=base<residentTexels.size()?residentTexels[base]:std::vector<uint16_t>{};
         auto rgba=texturePixels(sky.vram,key.first,key.second,window,&source);
@@ -81,9 +122,10 @@ struct CourseMesh {
         textureWindows.resize(textureKeys.size());textureWindows.push_back(window);textureKeys.push_back(key);textures.push_back(t);return uint32_t(textures.size()-1);
     }
     void updateVram(const std::vector<uint16_t>&words) {
-        textureUpdates=0;
+        TextureSignatures before{sky.vram,{}},after{words,{}};updateVram(words,before,after);
+    }
+    void updateVram(const std::vector<uint16_t>&words,TextureSignatures&before,TextureSignatures&after) {
         if(words.size()!=524288)return;
-        TextureSignatures before{sky.vram,{}},after{words,{}};
         textureDirty.resize(textureKeys.size());
         for(size_t i=0;i<textureKeys.size();i++){
             auto [page,clut]=textureKeys[i];if(page<0)continue;
@@ -101,8 +143,10 @@ struct CourseMesh {
     void draw(SDL_Renderer*renderer,const Frame&frame,Vec camera,int width,int height) {
         const float cx=width/2.f,cy=height/2.f,focal=height*focalScale;
         bool depthPass=std::strcmp(SDL_GetRendererName(renderer),"opengl")==0;
-        faces.clear();faces.reserve(quads.size());
+        uint64_t buildStart=SDL_GetTicksNS();
+        faces.clear();
         auto addTriangle=[&](const MeshQuad&q,const ModelPose*pose,std::array<int,3> order) {
+            candidateTriangles++;
             uint32_t texture=q.texture,packed=0;
             bool remap=((pose&&pose->paletteOffset)||q.window)&&q.texture<textureKeys.size()&&textureKeys[q.texture].first>=0;
             if(remap){
@@ -139,23 +183,35 @@ struct CourseMesh {
                 // Road contact has an eight-unit depth tolerance: authored tires
                 // and shadow planes extend slightly below the geometric road.
                 // Keep the car parts' mutual depth and all screen coordinates intact.
-                auto emit=[&](MeshVertex a,MeshVertex b,MeshVertex c){faces.push_back({(a.position.z+b.position.z+c.position.z)/3,texture,q.bias,float(q.bias)*.125f+(!pose&&q.kind==1?8.f:0.f),{a,b,c}});};
+                auto emit=[&](MeshVertex a,MeshVertex b,MeshVertex c){faces.push_back({(a.position.z+b.position.z+c.position.z)/3,texture,q.bias,float(q.bias)*.125f+(!pose&&q.kind==1?8.f:0.f),{a,b,c},faces.size()});};
                 if(depthPass||!perspective)emit(clipped[0],clipped[i],clipped[i+1]);
                 else perspectiveTriangles(clipped[0],clipped[i],clipped[i+1],emit);
             }
         };
         auto addQuad=[&](const MeshQuad&q,const ModelPose*pose){addTriangle(q,pose,{0,1,2});addTriangle(q,pose,{2,1,3});};
         bool night=nightScenery(frame);
-        for(const auto&q:quads)if(!q.dayOnly||!night)addQuad(q,nullptr);
+        if(chunkBounds.empty())for(const auto&q:quads)if(!q.dayOnly||!night)addQuad(q,nullptr);
+        for(size_t chunk=0;chunk<chunkBounds.size();chunk++){
+            if(!chunkBounds[chunk].visible(frame,camera,nullptr,width,height,focalScale)){culledChunks++;continue;}
+            for(size_t i=chunk*chunkSize;i<std::min(quads.size(),(chunk+1)*chunkSize);i++){const auto&q=quads[i];if(!q.dayOnly||!night)addQuad(q,nullptr);}
+        }
         for(const auto&pose:frame.models){
+            if(pose.model<modelBounds.size()&&!modelBounds[pose.model].visible(frame,camera,&pose,width,height,focalScale)){culledModels++;continue;}
             if(pose.model<models.size())for(const auto&q:models[pose.model])addQuad(q,&pose);
         }
         // Decode/upload only textures needed by surviving faces. Dirty off-screen
         // variants retain their flag and use the newest VRAM when seen again.
+        buildMs+=double(SDL_GetTicksNS()-buildStart)/1e6;uint64_t uploadStart=SDL_GetTicksNS();
+        renderedFaces+=unsigned(faces.size());
         for(const auto&face:faces)prepareTexture(face.texture);
+        uploadMs+=double(SDL_GetTicksNS()-uploadStart)/1e6;uint64_t sortStart=SDL_GetTicksNS();
         if(depthPass){
-            std::stable_sort(faces.begin(),faces.end(),[](const Face&a,const Face&b){return a.texture==b.texture?a.bias<b.bias:a.texture<b.texture;});
-            if(depthRenderer.draw(renderer,textures,faces,width,height,perspective,focalScale,smooth))return;
+            // Explicit original-order tie-breaker preserves stable material order
+            // without stable_sort's temporary allocation.
+            std::sort(faces.begin(),faces.end(),[](const Face&a,const Face&b){if(a.texture!=b.texture)return a.texture<b.texture;if(a.bias!=b.bias)return a.bias<b.bias;return a.order<b.order;});
+            sortMs+=double(SDL_GetTicksNS()-sortStart)/1e6;uint64_t depthStart=SDL_GetTicksNS();
+            bool drawn=depthRenderer.draw(renderer,textures,faces,width,height,perspective,focalScale,smooth);
+            depthMs+=double(SDL_GetTicksNS()-depthStart)/1e6;if(drawn)return;
         }
         // This approximate ordering is diagnostic, not a replacement for the
         // game's ordering-table/depth-bias rules (bridges/transparency pending).

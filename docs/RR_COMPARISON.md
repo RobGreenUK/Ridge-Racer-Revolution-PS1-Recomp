@@ -1,7 +1,7 @@
 # Review against current Ridge Racer
 
 This comparison uses Ridge Racer source revision
-`cd0ee7ac60568a74bdbfaab9d927b5e7aea93bec` and the maintained Revolution source.
+`6104e3314c41f87795b4f54642d6a1cfa4b32f2d` and the maintained Revolution source.
 It is an implementation review, not a claim of equivalent game behaviour.
 Ridge Racer targets SCUS-94300; Revolution targets SLUS-00214 and a separate
 racing executable. Addresses, model classifications and IPC are not interchangeable.
@@ -10,7 +10,7 @@ racing executable. Addresses, model classifications and IPC are not interchangea
 
 | Area | Revolution evidence and conclusion |
 |---|---|
-| Texture invalidation/decoding | `src/scene/texture_data.h` matches RR; resident palette handling, shared page signatures and palette expansion are already present. `tests/test_texture_updates.py` covers output parity. |
+| Resident texture invalidation/decoding | `src/scene/texture_data.h` matches RR; resident palette handling, shared page signatures and palette expansion are already present. `tests/test_texture_updates.py` covers output parity. |
 | GPU geometry batching | `depth_renderer.h` already streams a vertex buffer and batches draws; copying RR's renderer would overwrite Revolution-specific layer handling. |
 | Asynchronous metrics | `frame_metrics.h` already uses a bounded writer queue. `test_async_metrics.py` checks a blocked sink; Revolution also retains detailed camera/source tracing. |
 | Display callback before draw | `display_pacer.h` and `native.cpp` already wait before rendering. The separate RR phase-trial/hand-off instrumentation is not evidence that Revolution needs the same phase. |
@@ -54,10 +54,60 @@ copying RR's guest addresses. See the architecture guide for the handoff contrac
 | Widescreen HUD edge anchors | RRR has different packet parsing, minimap and rear-view overlays. | Compare 4:3 identity and all widescreen groups in race, menus and replay. |
 | Mirror signage/decal corrections | A rear-view mirror pass is distinct from reflecting a course; RR's selected model IDs are not portable. | Verify RRR course-reflection and rear-view transforms, UVs, culling and controls separately. |
 | RR phase trial and native handoff trace | RRR has its own pacing and camera tracing; CPU cadence alone cannot establish a scanout problem. | Controlled timing/configuration comparisons plus display evidence. |
-| Static bounds and sorting optimizations | RRR still walks its own geometry and uses stable material sorting. These are optimization candidates, not established correctness faults. | Profile actual workload and preserve visibility/layer order in matched renders. |
 | Windows transport/launcher | RRR's mapped snapshot ABI and Swift launcher differ from RR. | Implement and test the native Windows pipeline described in the Windows scope guide. |
 
 These are review findings and next verification steps, not completed ports or an
 issue-history dump. The first release preserves the working RRR paths rather than
 substituting unverified RR addresses. Keep findings current as RRR-specific tests
 and gameplay evidence become available.
+
+## Rendering workload and smoothness review
+
+The resident-texture correction was already present in Revolution: displaced live
+VRAM page words do not dirty immutable resident texels, but live palette changes
+still do. Palette expansion and reused RGBA upload storage also match RR. Valid
+lighting/texture changes still require full texture uploads; suppressing those
+would freeze game appearance.
+
+The later portable RR optimizations are now also applied here:
+
+- **Palette lookup:** a persistent key-to-texture index replaces a linear scan per
+  remapped triangle. Keys retain page, CLUT, texture window and resident/live identity,
+  including first-match behaviour for duplicate keys.
+- **Shared change detection:** HUD, background and world updates share the same
+  before/after page-signature caches for each snapshot. Update consumers before
+  replacing the retained VRAM image.
+- **Early visibility rejection:** conservative bounds cover groups of 64 static
+  quads and each model. Test transformed bounds before triangle processing, without
+  introducing a distance limit. Revolution uses its actual focal scale for both
+  the main view and rear-view mirror; RR's fixed main-view projection is insufficient.
+- **Material ordering:** sort by texture, bias and original face order. The explicit
+  final tie-breaker preserves stable ordering without allocating stable-sort scratch
+  storage in the OpenGL path. Triangle clipping already uses fixed scratch arrays.
+- **Measurements:** populate existing mesh/build, upload, sort, depth and rejection
+  columns. CPU values include both main and mirror draws; counters reset each
+  presentation frame, including texture uploads. Alternate nonblocking render-wide
+  GPU samples (main/mirror/HUD/final flush) with main-view depth samples. Delayed GPU
+  results retain their original submission IDs; unavailable samples are -1.
+
+Other RR findings do not imply an additional Revolution fix:
+
+| Area | Revolution assessment |
+|---|---|
+| Per-frame Windows endpoint file reads | Not applicable to Revolution's persistent mapped POSIX transport. |
+| Telemetry blocking, immediate-mode draw calls | Bounded asynchronous logging and streamed/batched geometry were already present. |
+| Timing gaps, lost samples, interpolation holds | Existing lifecycle/camera/transport measurements remain; missing render substages are now populated. The mapped snapshot is atomic, so RR's partial datagram assembly does not apply. |
+| Early display callback | Already waits before input and drawing, with SDL fallback. Fullscreen/display FPS/VSync conditions remain unchanged. |
+| Additional 2 ms presentation-phase trial | RR keeps this in a separate experimental executable. Its comparisons did not establish a general fix; no new delay is imposed on Revolution. |
+| Appearance changes freezing motion | RR's night-bit and phase 1→2→3 transitions are not Revolution's state values. Revolution publishes states 17/19 independently of palette changes; no RR state exception is transplanted. |
+| Wheel mesh changes freezing poses | Revolution already interpolates by owner/site/part identity across mesh variants. |
+| Companion workload, evaluator, interpolation delay | Retained in both projects' accepted implementation. No GPU bypass, physics-rate change or reduced interpolation buffer is warranted by the comparison. |
+| Screenshots, graph and first-use uploads | RR also retains marked synchronous captures, graph work and first-use costs. These are not completed RR fixes available to copy. |
+| Event/compositor/driver stalls | RR acceptance and CPU traces do not establish a portable remedy for every operating-system or scanout symptom. Windows reports remain separate from this Mac project. |
+
+Validation uses synthetic OpenGL checks for conservative bounds (including mirror
+projection), identical culled/unculled images, material order, palette cache reuse,
+resident invalidation and upload counters. Local before/after saved-scene replay
+checks must preserve pixels while comparing draw costs. Neither a stable CPU frame
+graph nor faster draw work alone establishes perceptually smooth display scanout;
+a full-course playtest remains necessary for a reported temporal symptom.

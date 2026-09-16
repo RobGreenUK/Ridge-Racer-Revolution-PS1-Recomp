@@ -5,7 +5,10 @@
 struct HudRenderer {
     std::unordered_map<uint32_t,SDL_Texture*>textures;
     void updateVram(const std::vector<uint16_t>&oldWords,const std::vector<uint16_t>&words){
-        TextureSignatures before{oldWords,{}},after{words,{}};
+        TextureSignatures before{oldWords,{}},after{words,{}};updateVram(before,after);
+    }
+    void updateVram(TextureSignatures&before,TextureSignatures&after){
+        const auto&words=after.vram;
         for(auto&entry:textures){unsigned page=entry.first&65535,clut=entry.first>>16;
             if(before.get(page,clut)==after.get(page,clut))continue;
             auto rgba=texturePixels(words,page,clut);
