@@ -130,6 +130,12 @@ when wheel meshes alternate. State/camera discontinuities remain cuts. The
 background panorama has its own interpolation; HUD animation and some appearance
 changes still update at source rate.
 
+[hud_layout.h](../src/scene/hud_layout.h) classifies Revolution's race HUD groups
+for widescreen edge placement. The mirror and central messages remain centred;
+4:3 and replay layout are unchanged. [HUD drawing](../src/scene/hud_renderer.h)
+translates both geometry and its clip rectangle. See the
+[HUD contract](RR_COMPARISON.md#widescreen-race-hud) for group coverage and checks.
+
 [mesh.h](../src/scene/mesh.h) decodes geometry and live material changes.
 [texture_data.h](../src/scene/texture_data.h) caches page/palette signatures,
 ignores irrelevant live-page changes for resident indexed textures and expands
