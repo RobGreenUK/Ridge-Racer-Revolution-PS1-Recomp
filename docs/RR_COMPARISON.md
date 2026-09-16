@@ -38,11 +38,16 @@ and run the emitter helper with Bash, as required by its array syntax.
 launcher requires the sibling RR checkout. Source publication excludes previous
 history, private notes, media and generated game data.
 
+**Single enhanced window and boot screens:** imported RR's hidden-companion SDK
+patch and adapted its startup frame-hook approach to Revolution's mapped snapshot
+transport. Galaga/boot framebuffer capture and SIO input forwarding now precede
+the existing racing-executable hooks. This ports the runtime mechanism without
+copying RR's guest addresses. See the architecture guide for the handoff contract.
+
 ## Fixes that need Revolution-specific work
 
 | RR feature/fix | Why it was not copied | Required evidence before a port |
 |---|---|---|
-| Hidden companion from startup | RRR's native bridge starts in the racing executable; hiding the runtime would hide boot/minigame interaction. | Implement/verify boot framebuffer and input forwarding first. |
 | Additional enhanced replay states | RR state numbers are unrelated to Revolution's state table; RRR currently gates enhanced scenes on 17/19. | Verify each RRR mode, camera transition, snapshot readiness and replay identity. |
 | Car/shadow contact depth shader | RRR uses different parts, depth layers and a road tolerance; RR tags and hooks are game-specific. | Verify original shadow submissions and road-plane selection across courses, slopes, jumps and mirror passes. |
 | Fallen-sign lifetime and replay history | RR's object addresses, state transitions and recorded indices cannot identify Revolution's objects. | Find the corresponding RRR lifecycle, prove the defect and preserve original movement/collision. |

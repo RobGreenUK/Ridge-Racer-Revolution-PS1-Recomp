@@ -151,6 +151,7 @@ if(e.type==SDL_EVENT_KEY_DOWN&&!e.key.repeat&&e.key.key==SDLK_G)showGraph=!showG
         if(changed){
             ready=s.valid;
             if(s.valid){
+                if(screen)SDL_DestroyTexture(screen);screen=nullptr;sw=sh=0;
                 if(track!=s.course){if(mesh)mesh->close();mesh=std::make_unique<CourseMesh>();mesh->fullCourse=s.full_scene;mesh->perspective=perspective;mesh->smooth=smooth;mesh->load(r,assets+"/course-"+std::to_string(s.course)+".rrassets");hud.close();sky.close();timeline.clear();mirrorTimeline.clear();track=s.course;}
                 current=decode(s,false);currentMirror=decode(s,true);
                 for(const auto&pose:current.models){auto found=std::find_if(currentMirror.models.begin(),currentMirror.models.end(),[&](const ModelPose&m){return m.key==pose.key&&m.model==pose.model;});if(found==currentMirror.models.end())currentMirror.models.push_back(pose);}
@@ -159,8 +160,10 @@ if(e.type==SDL_EVENT_KEY_DOWN&&!e.key.repeat&&e.key.key==SDLK_G)showGraph=!showG
             }else{
                 timeline.clear();mirrorTimeline.clear();
                 if(s.screen_width&&s.screen_height){
-                    if(sw!=s.screen_width||sh!=s.screen_height){if(screen)SDL_DestroyTexture(screen);sw=s.screen_width;sh=s.screen_height;screen=SDL_CreateTexture(r,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,sw,sh);}
+                    if(sw!=s.screen_width||sh!=s.screen_height){if(screen)SDL_DestroyTexture(screen);sw=s.screen_width;sh=s.screen_height;screen=SDL_CreateTexture(r,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,sw,sh);if(screen)SDL_SetTextureScaleMode(screen,SDL_SCALEMODE_NEAREST);}
                     if(screen)SDL_UpdateTexture(screen,nullptr,s.screen,sw*4);
+                }else{
+                    if(screen)SDL_DestroyTexture(screen);screen=nullptr;sw=sh=0;
                 }
             }
         }
@@ -183,7 +186,7 @@ if(e.type==SDL_EVENT_KEY_DOWN&&!e.key.repeat&&e.key.key==SDLK_G)showGraph=!showG
         if(count)graph.add(elapsed,double(now-last)/1e6);
         if(showGraph)graph.draw(r,width,height,elapsed,effective);
         unsigned marker=0;double markerMs=0;
-        if(mark||(!shot.empty()&&ready&&elapsed>=shotAt)){
+        if(mark||(!shot.empty()&&(ready||screen)&&elapsed>=shotAt)){
             auto begin=SDL_GetTicksNS();std::string dest=shot;
             if(mark){marker=++metrics.marker;dest=metricsPath.empty()?path+".marker-"+std::to_string(marker)+".bmp":metricsPath+".marker-"+std::to_string(marker)+".bmp";}
             auto*surface=SDL_RenderReadPixels(r,nullptr);bool saved=surface&&SDL_SaveBMP(surface,dest.c_str());if(surface)SDL_DestroySurface(surface);

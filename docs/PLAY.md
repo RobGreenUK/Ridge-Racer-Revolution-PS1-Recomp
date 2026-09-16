@@ -14,10 +14,12 @@ Run `sh scripts/run-macos.sh`, open `Ridge Racer Revolution.command`, or open
 longer settings pages scroll independently. Closing and reopening the service menu
 after rebuilding loads the updated layout.
 
-The original runtime handles startup/minigame and menus. The native window appears
-when the racing executable publishes its first snapshot. Keeping the original
-window available at boot is intentional: hiding it before a boot framebuffer/input
-bridge exists would leave that part of the game inaccessible.
+Enhanced mode uses one visible game window from startup: Galaga and other 2D
+screens are copied from the original runtime, then racing switches to enhanced
+geometry. Keyboard input in that window also controls the boot/minigame.
+The original runtime stays hidden while providing simulation, GPU work and audio.
+For diagnostics only, `REVOLUTION_VISIBLE_COMPANION=1 sh scripts/run-macos.sh`
+restores its window. Original mode retains its normal visible runtime window.
 
 The native renderer offers 4:3/16:9 output, matching resolutions, Display FPS or
 30–360 FPS, nearest/bilinear filtering and perspective/affine texture projection.
@@ -27,7 +29,9 @@ Use the service menu's Controls tab → Controls & advanced settings for runtime
 In the native window use Enter for Start, arrows for direction, X/Space to
 accelerate, Z to brake and Esc to close. G toggles the frame-time graph; P or F8
 captures diagnostics and can briefly stall presentation. Close one session before
-opening another. Closing either owned process ends the enhanced session.
+opening another. Closing the enhanced window ends both owned processes.
+Rewind via F8 requires the original runtime window: use Original mode or the
+visible-companion diagnostic option. In the enhanced window F8 captures diagnostics.
 
 Preferences are in `build-macos/settings.toml`; mod state is under
 `build-macos/mods/`. Memory cards are in `saves/`. These belong to Revolution and

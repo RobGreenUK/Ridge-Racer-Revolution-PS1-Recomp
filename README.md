@@ -69,7 +69,8 @@ sh scripts/build-macos.sh
 sh scripts/run-macos.sh
 ```
 
-Select **Original — playtested** or **Native — preview** in the service menu.
+Select **Original** or **Enhanced — native rendering** in the service menu’s
+**Motion** tab. Enhanced mode shows Galaga, menus and racing in one game window.
 See [controls and settings](docs/PLAY.md). Initial builds need Internet access for
 dependencies. Game code and assets are derived from your disc, not downloaded.
 

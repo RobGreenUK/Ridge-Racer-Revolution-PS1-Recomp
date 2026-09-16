@@ -60,6 +60,11 @@ For an isolated native-renderer session (opens windows and applies scripted inpu
 python3 tools/test_native_scene.py unique-native-run --seconds 90
 ```
 
+The native smoke tool hides the companion like a normal Enhanced launch. Use
+`--manual-input` to disable scripted input and verify Galaga/boot controls through
+the enhanced window. Timed captures can record either original 2D screens or an
+enhanced race, so inspect the frame metrics and image to confirm the intended phase.
+
 Use unique names and run only when they will not interrupt a live game. The tools
 use a separate diagnostic port and temporary/private saves. Headless execution is
 not display-pacing evidence. Original and enhanced screenshots alone cannot show
