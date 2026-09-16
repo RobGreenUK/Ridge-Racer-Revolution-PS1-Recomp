@@ -17,9 +17,53 @@ static MeshQuad quad(float x,float z,unsigned texture=0){
     for(int i=0;i<4;i++)q.v[i]={{x+(i&1?10.f:-10.f),i&2?10.f:-10.f,z},i&1?1.f:0.f,i&2?1.f:0.f};
     return q;
 }
+static void hudLayoutRegression(SDL_Renderer*r){
+    auto xy=[](int x,int y){return uint32_t(uint16_t(x))|(uint32_t(uint16_t(y))<<16);};
+    uint32_t left[]={0x65000000,xy(7,16),0x79cf1000,0x00080030};
+    uint32_t right[]={0x65000000,xy(258,16),0x79cf1030,0x00080030};
+    uint32_t mirror[]={0x65000000,xy(74,16),0x780030c8,0x00080038};
+    uint32_t map[]={0x2dffffff,xy(4,56),0x78050000,xy(75,56),15u<<16,xy(4,111),0,xy(75,111),0};
+    uint32_t arrow[]={0x2900ffff,xy(-1,108),xy(9,102),xy(4,109),xy(6,113)};
+    uint32_t needle[]={0x2980ffff,xy(264,196),xy(237,173),xy(266,194),xy(238,172)};
+    assert(revolutionHudAnchor(left,4,5)==-1&&revolutionHudAnchor(right,4,5)==1);
+    assert(revolutionHudAnchor(mirror,4,5)==0);
+    assert(revolutionHudAnchor(map,9,0)==-1&&revolutionHudAnchor(arrow,5,5)==-1);
+    assert(revolutionHudAnchor(needle,5,5)==1);
+    assert(revolutionHudAnchor(left,4,4)==0&&revolutionHudAnchor(left,3,5)==0);
+    for(int h:{240,720,1080,2160}){
+        assert(revolutionHudShift(left,4,5,17,h*4/3,h,false)==0);
+        assert(revolutionHudShift(left,4,5,17,h*16/9,h,false)==-(h*16/9-h*4.f/3)/2);
+        for(unsigned state:{0u,1u,16u,32u,~0u})assert(revolutionHudShift(left,4,5,state,h*16/9,h,false)==0);
+        assert(revolutionHudShift(left,4,5,17,h*16/9,h,true)==0);
+    }
+    // Real GL: explicit framebuffer scissor must move with the group. Use only
+    // synthetic red texels, then compare the complete image with direct expected
+    // rectangles for race, attract, replay and 4:3 at both framebuffer origins.
+    HudRenderer hud;std::vector<uint16_t>vram(524288,0x001f);
+    for(int h:{720,960})for(unsigned state:{17u,19u,32u})for(int displayY:{0,240}){
+        auto*target=SDL_CreateTexture(r,SDL_PIXELFORMAT_RGBA8888,SDL_TEXTUREACCESS_TARGET,1280,h);assert(target);
+        SDL_SetRenderTarget(r,target);SDL_SetRenderDrawColor(r,0,0,0,255);SDL_RenderClear(r);
+        Frame f{};f.flags=state;
+        f.hud={1,0xe1000005,1,0xe3000000u|(unsigned(displayY)<<10),1,0xe4000000u|319u|(unsigned(displayY+239)<<10)};
+        for(auto*p:{left,right,mirror}){f.hud.push_back(4);f.hud.insert(f.hud.end(),p,p+4);}
+        hud.draw(r,f,vram,1280,h,0,displayY);
+        auto actual=pixels(r);
+        SDL_SetRenderClipRect(r,nullptr);SDL_SetRenderDrawColor(r,0,0,0,255);SDL_RenderClear(r);
+        float scale=h/240.f,margin=(1280-320*scale)/2;
+        for(auto*p:{left,right,mirror}){
+            int anchor=p==left?-1:p==right?1:0;
+            float shift=state==32?0:anchor*margin;
+            SDL_FRect box{margin+int16_t(p[1])*scale+shift,16*scale,float(p[3]&65535)*scale,8*scale};
+            SDL_SetRenderDrawColor(r,255,0,0,255);SDL_RenderFillRect(r,&box);
+        }
+        assert(actual==pixels(r));SDL_SetRenderTarget(r,nullptr);SDL_DestroyTexture(target);
+    }
+    hud.close();
+}
 int main(){
     assert(SDL_Init(SDL_INIT_VIDEO));SDL_Window*w=SDL_CreateWindow("Renderer parity regression",320,240,SDL_WINDOW_HIDDEN);assert(w);
     SDL_Renderer*r=SDL_CreateRenderer(w,"opengl");assert(r);
+    hudLayoutRegression(r);
     CourseMesh mesh;mesh.depthRenderer.measureGpu=false;
     for(auto colour:{0xffffffffu,0xff0000ffu}){
         auto*t=SDL_CreateTexture(r,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_STATIC,256,256);assert(t);

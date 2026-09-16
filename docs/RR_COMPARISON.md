@@ -51,7 +51,6 @@ copying RR's guest addresses. See the architecture guide for the handoff contrac
 | Other enhanced 3D modes | Post-race replay state 32 is now supported alongside race/attract 17/19. Other state numbers are not interchangeable with RR. | Verify each additional RRR mode and its camera, recorded entities and capture boundaries before enabling it. |
 | Car/shadow contact depth shader | RRR uses different parts, depth layers and a road tolerance; RR tags and hooks are game-specific. | Verify original shadow submissions and road-plane selection across courses, slopes, jumps and mirror passes. |
 | Fallen-sign lifetime and replay history | RR's object addresses, state transitions and recorded indices cannot identify Revolution's objects. | Find the corresponding RRR lifecycle, prove the defect and preserve original movement/collision. |
-| Widescreen HUD edge anchors | RRR has different packet parsing, minimap and rear-view overlays. | Compare 4:3 identity and all widescreen groups in race, menus and replay. |
 | Mirror signage/decal corrections | A rear-view mirror pass is distinct from reflecting a course; RR's selected model IDs are not portable. | Verify RRR course-reflection and rear-view transforms, UVs, culling and controls separately. |
 | RR phase trial and native handoff trace | RRR has its own pacing and camera tracing; CPU cadence alone cannot establish a scanout problem. | Controlled timing/configuration comparisons plus display evidence. |
 | Windows transport/launcher | RRR's mapped snapshot ABI and Swift launcher differ from RR. | Implement and test the native Windows pipeline described in the Windows scope guide. |
@@ -152,3 +151,28 @@ frames, seven observed camera identities, and 2D fallback on exit. Original and
 enhanced replay views were inspected locally. The diagnostic used an accumulated
 recording and a controlled finish transition, so this does not replace a natural
 full-course playtest or verify every course, replay control and camera path.
+
+## Widescreen race HUD
+
+`hud_layout.h` adapts RR's edge-anchor method to Revolution's own packet families.
+In race/attract states 17/19, TIME, its digits, the course map and both arrow layers,
+RECORD/TOTAL labels and values, and the gear-selection strips move toward the left
+edge. POSITION and its digits, lap labels/times, and the complete rev counter
+(dial, needle, digital speed and gear) move toward the right edge. Element sizes
+and vertical positions are unchanged. Each group shifts by half the extra width
+outside the original 4:3 frame; at 1280×720 that is 160 pixels per side.
+
+The rear-view image, border and lettering stay centred, as do central race
+messages, fades and unrecognized packet families. Replay overlays remain centred.
+The translation is zero for 4:3 or narrower targets and is disabled for stretched
+full-width HUD passes. Matching uses packet type, texture page/palette and authored
+coordinates, not a blanket left/right split that could move the mirror or messages.
+Draw-area clipping follows an anchored group; clipping state is reused until the
+anchor or draw area changes.
+
+Validation includes real OpenGL synthetic images for left/right/centre placement,
+framebuffer origins, 4:3, widescreen, race, attract and replay. Seven saved 4:3 views
+remain byte-identical; six widescreen race views across EASY/MID/HIGH retain an
+identical mirror region, and a widescreen replay view is unchanged. The repositioned
+HUD was visually inspected. Other courses and unusual HUD states still benefit
+from gameplay coverage; no copyrighted captures are included in the repository.

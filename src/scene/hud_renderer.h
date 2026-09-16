@@ -2,6 +2,7 @@
 #include <unordered_map>
 #include "texture_data.h"
 #include "gp0_commands.h"
+#include "hud_layout.h"
 struct HudRenderer {
     std::unordered_map<uint32_t,SDL_Texture*>textures;
     void updateVram(const std::vector<uint16_t>&oldWords,const std::vector<uint16_t>&words){
@@ -44,7 +45,7 @@ struct HudRenderer {
         }
     }
     void draw(SDL_Renderer*r,const Frame&f,const std::vector<uint16_t>&vram,int width,int height,int displayX=0,int displayY=0,bool fillWidth=false,bool omitMirrorBackground=false){
-        SDL_SetRenderClipRect(r,nullptr);int clipLeft=0,clipTop=0,clipRight=319,clipBottom=239;
+        SDL_SetRenderClipRect(r,nullptr);int clipLeft=0,clipTop=0,clipRight=319,clipBottom=239;bool explicitClip=false,clipDirty=false;float clipShift=0;
         uint16_t page=0;float scale=height/240.f,xscale=fillWidth?width/320.f:scale,left=fillWidth?0:(width-320*scale)/2;
         auto color=[](uint32_t rgb,float divisor){return SDL_FColor{(rgb&255)/divisor,((rgb>>8)&255)/divisor,((rgb>>16)&255)/divisor,1};};
         // DMA packets may bundle a texture-page command, sprites and lines.
@@ -59,12 +60,20 @@ struct HudRenderer {
                     if(code==0xe1)page=p[i]&0x1ff;
                     if(code==0xe3){clipLeft=int(p[i]&1023)-displayX;clipTop=int((p[i]>>10)&511)-displayY;}
                     if(code==0xe4){clipRight=int(p[i]&1023)-displayX;clipBottom=int((p[i]>>10)&511)-displayY;}
-                    if(code==0xe3||code==0xe4){SDL_Rect clip{int(left+clipLeft*xscale),int(clipTop*scale),std::max(0,int((clipRight-clipLeft+1)*xscale)),std::max(0,int((clipBottom-clipTop+1)*scale))};SDL_SetRenderClipRect(r,&clip);}
+                    if(code==0xe3||code==0xe4){explicitClip=true;clipDirty=true;SDL_Rect clip{int(left+clipLeft*xscale),int(clipTop*scale),std::max(0,int((clipRight-clipLeft+1)*xscale)),std::max(0,int((clipBottom-clipTop+1)*scale))};SDL_SetRenderClipRect(r,&clip);}
                 }
                 continue;
             }
+            const float shift=revolutionHudShift(p,n,page,f.flags,width,height,fillWidth);
+            // Translate the draw area with its anchored group. Otherwise an
+            // original 4:3 scissor can cut off HUD elements in the wider margins.
+            if(clipDirty||shift!=clipShift){
+                if(explicitClip||shift!=0){SDL_Rect clip{int(left+clipLeft*xscale+shift),int(clipTop*scale),std::max(0,int((clipRight-clipLeft+1)*xscale)),std::max(0,int((clipBottom-clipTop+1)*scale))};SDL_SetRenderClipRect(r,&clip);}
+                else SDL_SetRenderClipRect(r,nullptr);
+                clipShift=shift;clipDirty=false;
+            }
             SDL_Vertex v[4];int count=4;SDL_Texture*t=nullptr;
-            auto xy=[&](uint32_t packed){return SDL_FPoint{left+int16_t(packed)*xscale,int16_t(packed>>16)*scale};};
+            auto xy=[&](uint32_t packed){return SDL_FPoint{left+shift+int16_t(packed)*xscale,int16_t(packed>>16)*scale};};
             if((type==0x64&&n==4)||((type==0x74||type==0x7c)&&n==3)){
                 unsigned w=type==0x64?(p[3]&0xffff):(type==0x74?8:16),h=type==0x64?(p[3]>>16):w;
                 float u=p[2]&255,texY=(p[2]>>8)&255;auto origin=xy(p[1]);
@@ -105,7 +114,7 @@ struct HudRenderer {
             if(omitMirrorBackground&&!t&&count==4&&clipLeft==0&&clipRight==319){
                 SDL_Rect regions[]={{0,0,width,int(16*scale)},{0,int(56*scale),width,height-int(56*scale)},{0,int(16*scale),int(left+72*scale),int(40*scale)},{int(left+248*scale),int(16*scale),width-int(left+248*scale),int(40*scale)}};
                 for(auto region:regions){SDL_SetRenderClipRect(r,&region);if(!SDL_RenderGeometry(r,t,v,count,indices,6))throw std::runtime_error(SDL_GetError());}
-                SDL_Rect clip{int(left),0,int(320*scale),int(240*scale)};SDL_SetRenderClipRect(r,&clip);
+                SDL_Rect clip{int(left),0,int(320*scale),int(240*scale)};SDL_SetRenderClipRect(r,&clip);clipDirty=true;
             }else if(!SDL_RenderGeometry(r,t,v,count,indices,count==3?3:6))throw std::runtime_error(SDL_GetError());
         }
         SDL_SetRenderClipRect(r,nullptr);
