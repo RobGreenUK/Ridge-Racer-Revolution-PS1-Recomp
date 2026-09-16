@@ -6,6 +6,8 @@
 #include "psx_cycles.h"
 #include "gpu.h"
 #include "gpu_render.h"
+#include "sio.h"
+#include "screen_capture.h"
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <fcntl.h>
@@ -40,10 +42,34 @@ static void audit_model(const struct RRVModel*m){
 }
 static void audit_report(void){if(audit_enabled)fprintf(stderr,"Revolution submission audit: %u checks, %u mismatches\n",audit_checks,audit_errors);}
 
-static uint32_t owner,ready_state,ready_course;static int scene_ready;static char path[1024];
+static uint32_t owner,ready_state,ready_course;static int scene_ready,main_scene_active;static char path[1024];
 extern const uint16_t*gpu_get_vram(void);
 static uint64_t now(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return(uint64_t)t.tv_sec*1000000000+t.tv_nsec;}
 static void cleanup(void){if(shared)munmap(shared,sizeof *shared);if(fd>=0){close(fd);unlink(path);}shared=NULL;fd=-1;}
+/* Registered after the transport exists. The runtime invokes this after its
+ * normal controller sample, before the boot executable resumes. */
+extern void mod_register_frame_hook(void (*hook)(void));
+static int viewer_input(unsigned*buttons){
+    if(flock(fd,LOCK_SH|LOCK_NB)!=0)return 0;
+    uint64_t stamp=shared->input_ns;unsigned active=shared->input_active;
+    *buttons=shared->input_buttons;
+    flock(fd,LOCK_UN);uint64_t time=now();
+    return active&&*buttons<=65535&&stamp<=time&&time-stamp<=250000000;
+}
+static void publish(void){
+    uint64_t published=now();
+    if(flock(fd,LOCK_EX|LOCK_NB)==0){shared->published_ns=published;memcpy(&shared->frame,&frame,sizeof frame);flock(fd,LOCK_UN);}
+}
+static void startup_frame(void){
+    if(main_scene_active)return;
+    // No racing-executable addresses are meaningful during Galaga/boot.
+    frame.sequence++;frame.cycles=psx_cycle_count;frame.state=~0u;
+    frame.valid=0;frame.course=~0u;
+    revolution_capture_screen(&frame);
+    publish();
+    unsigned buttons;
+    if(!getenv("REVOLUTION_TEST_INPUT")&&viewer_input(&buttons))sio_set_pad_state_slot(0,(uint16_t)buttons);
+}
 static int ram(uint32_t a,unsigned n){uint32_t p=a&0x1fffffff;return p<=0x200000 && n<=0x200000-p;}
 static int course(uint32_t base){
     if(!ram(base,2072)||psx_mod_read_word(base)!=2072)return -1;
@@ -95,6 +121,7 @@ static void complete_cars(const CPUState*cpu){
     }
 }
 static void boundary(const CPUState*cpu){
+    main_scene_active=1;
     frame.cycles=psx_cycle_count;frame.sequence++;frame.state=psx_mod_read_half(0x801DD0BC);
     uint32_t base=psx_mod_read_word(0x801DD200);int id=course(base);frame.course=id<0?~0u:(uint32_t)id;
     int candidate=(frame.state==17||frame.state==19)&&id>=0;
@@ -122,23 +149,16 @@ static void boundary(const CPUState*cpu){
             frame.sky_count=packets(env+0xcc+703*4,env+0xcc+702*4,frame.sky,RRV_SKY_CAP);
         }
     }else{
-        if(!info.disabled&&!info.depth24&&info.width&&info.width<=640&&info.height&&info.height<=512){
-            gr_render_display(frame.screen,info.width*4,info.display_x,info.display_y,info.width,info.height);
-            frame.screen_width=info.width;frame.screen_height=info.height;
-        }
+        revolution_capture_screen(&frame);
     }
     const uint16_t*vram=gpu_get_vram();if(vram)memcpy(frame.vram,vram,sizeof frame.vram);
-    uint64_t published=now();
-    if(flock(fd,LOCK_EX|LOCK_NB)==0){shared->published_ns=published;memcpy(&shared->frame,&frame,sizeof frame);flock(fd,LOCK_UN);}
+    publish();
     reference_count=0;frame.model_count=0;owner=0;scenery_owned[0]=scenery_owned[1]=0;
 }
 static void hook(CPUState*cpu,uint32_t address){
     if(address==0x80040194){
         if(cpu->gpr[31]!=0x80019E70||getenv("REVOLUTION_TEST_INPUT"))return;
-        if(flock(fd,LOCK_SH|LOCK_NB)!=0)return;
-        uint64_t stamp=shared->input_ns;unsigned active=shared->input_active,buttons=shared->input_buttons;
-        flock(fd,LOCK_UN);uint64_t time=now();
-        if(!active||buttons>65535||stamp>time||time-stamp>250000000)return;
+        unsigned buttons;if(!viewer_input(&buttons))return;
         psx_mod_write_byte(0x801DC904,0);psx_mod_write_byte(0x801DC905,0x41);
         psx_mod_write_byte(0x801DC906,buttons&255);psx_mod_write_byte(0x801DC907,buttons>>8);return;
     }
@@ -181,6 +201,7 @@ PSX_MOD_CONSTRUCTOR(register_revolution_live){
     if(ftruncate(fd,sizeof(struct RRVShared))<0){cleanup();return;}
     void*map=mmap(NULL,sizeof(struct RRVShared),PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);if(map==MAP_FAILED){cleanup();return;}
     shared=map;memset(shared,0,sizeof *shared);shared->magic=RRV_SHARED_MAGIC;shared->size=sizeof *shared;atexit(cleanup);
+    mod_register_frame_hook(startup_frame);
     uint32_t entries[]={0x80036934,0x80057578,0x800232C4,0x8001B660,0x80053D24,0x80054654,0x80054914,0x800552F8,0x80055A58,0x80040194};
     for(unsigned i=0;i<sizeof(entries)/sizeof(entries[0]);i++)psx_mod_register_function_entry_plugin("revolution.scene.live",entries[i],hook);
 }

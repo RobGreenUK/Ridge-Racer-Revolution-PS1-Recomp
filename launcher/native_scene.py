@@ -23,6 +23,10 @@ def launch(root,values,env,log):
         config=document(root/'build-macos/settings.toml');config.setdefault('video',{}).update(supersampling=1,window_width=640,fullscreen=0,frame_interpolation=False,frame_interpolation_fps=0)
         (host/'settings.toml').write_text('\n'.join(json.dumps(k)+' = '+literal(v) for k,v in config.items())+'\n')
         child_env=dict(env,REVOLUTION_SCENE_FILE=str(host/'scene'),REVOLUTION_FULL_SCENE='1' if values['fullScene'] else '0',REVOLUTION_CAR_DISTANCE=str(values['nativeCarDistance']))
+        # Keep the original GPU/context and simulation pacing, but expose only
+        # the enhanced window. Boot screens and input use the scene bridge too.
+        child_env['PSX_HIDDEN_COMPANION']='0' if env.get('REVOLUTION_VISIBLE_COMPANION')=='1' else '1'
+        child_env['SDL_RENDER_DRIVER']='opengl'
         for name in ['REVOLUTION_TEST_INPUT','REVOLUTION_SCENE_CAPTURE','REVOLUTION_SCENE_DUMP_PREFIX']:child_env.pop(name,None)
         command=[str(viewer),'--shared',str(host/'scene'),'--assets',str(assets),'--metrics',str(recording/'frames.csv'),'--fps',str(values['nativeFps']),'--width',str(values['nativeWidth']),'--height',str(values['nativeHeight']),'--vsync',values['vsync'],'--filter',values['filtering']]
         if values['frameGraph']:command.append('--frame-graph')

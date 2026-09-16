@@ -14,7 +14,7 @@ The hash stamp is checked before overlay compilation so generated code cannot
 silently use an incompatible runtime. A second configuration incorporates the
 new overlay code before the runtime and viewers are compiled.
 
-The public upstream SDK revision plus three [patches](../patches) is sufficient:
+The public upstream SDK revision plus the [patches](../patches) is sufficient:
 
 - The Revolution code-generation patch recognizes its reserved division-guard
   instruction and emits a fail-fast guard, rather than silently dropping it.
@@ -23,6 +23,8 @@ The public upstream SDK revision plus three [patches](../patches) is sufficient:
   the framework's test-registration completeness check.
 - The shared OpenGL patch flushes queued GPU drawing before readback consumes
   dirty regions, keeping subsequent CPU reads coherent.
+- The shared hidden-companion patch creates the runtime window hidden in Enhanced
+  mode, without removing its GL context, GPU work or original frame pacing.
 
 [apply-runtime-patches.sh](../scripts/apply-runtime-patches.sh) is idempotent and
 does not update upstream revisions. Never depend on a private SDK commit or edit
@@ -62,11 +64,29 @@ flowchart LR
 The original game owns simulation, physics, race logic, audio and saves.
 [launcher/native_scene.py](../launcher/native_scene.py) owns both children and
 terminates them when either exits. A temporary companion directory isolates its
-window settings while both Revolution modes use Revolution's saves. The original
-window remains necessary during boot: the scene bridge starts in the racing
-executable, so hiding the companion at creation would hide startup interaction.
+window settings while both Revolution modes use Revolution's saves. Enhanced
+mode sets `PSX_HIDDEN_COMPANION=1` from creation. The original GPU remains active;
+it supplies boot/2D frames and game state, but does not expose a second window.
+`REVOLUTION_VISIBLE_COMPANION=1` is a launcher opt-out for diagnostics.
 
 ## Scene capture and transport
+
+Before the racing executable takes over, a runtime frame hook in
+[live.c](../src/scene/live.c) captures the displayed framebuffer after normal
+controller sampling. [screen_capture.h](../src/scene/screen_capture.h) uses GPU
+readback for both 15-bit colour and packed RGB24 screens, validating dimensions
+and clearing availability when the display is disabled. It never reads racing
+addresses during boot. Fresh, active enhanced-window input is applied to emulated
+SIO pad 0; inactive, malformed, future-dated or older-than-250-ms input is ignored.
+This preserves normal runtime gamepad sampling when the enhanced keyboard is idle.
+
+At the verified racing boundary (`80057578`, return address `80019D00`), the
+boot publisher yields permanently to the existing game-specific capture path.
+Input then uses the verified racing digital-packet boundary. Both producers use
+the same mapped structure and sequence, avoiding a second transport or ABI change.
+The viewer clears old 2D textures when a new frame has no available display.
+`tests/test_boot_bridge.py` covers boot pixels, input expiry and this handoff with
+synthetic data; live validation must also exercise Galaga and entering a race.
 
 [live.c](../src/scene/live.c) observes Revolution's verified submission boundaries,
 collects model/HUD/sky data and publishes a snapshot. Enhanced scene candidates

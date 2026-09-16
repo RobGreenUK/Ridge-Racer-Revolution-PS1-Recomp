@@ -300,7 +300,7 @@ struct ServiceView: View {
             Text("Keyboard & gamepad").font(.headline)
             note("Enter → Start · Arrows → Steer\nX / Space → Accelerate · Z → Brake\nClick the enhanced window to use its keyboard controls.")
             Toggle("Rewind", isOn: $model.settings.rewind)
-            note("F8 rewinds when the original companion window has focus. In the enhanced window, P/F8 captures a visual issue.")
+            note("F8 rewinds in the original runtime window (Original mode, or a visible diagnostic companion). In the enhanced window, P/F8 captures a visual issue.")
             Button("Controls & advanced settings…") { model.launch(advanced: true) }
             note("Opens PSXRecomp’s full launcher for controller bindings and advanced settings. Settings are reloaded here when it closes.")
             Divider()

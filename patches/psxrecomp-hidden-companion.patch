@@ -1,0 +1,51 @@
+diff --git a/runtime/src/main.cpp b/runtime/src/main.cpp
+index 95df1665..9644ae5d 100644
+--- a/runtime/src/main.cpp
++++ b/runtime/src/main.cpp
+@@ -400,6 +400,8 @@ static void apply_offline_pad_count(int game_players, bool multitap_enabled)
+ /* ARGB8888 staging buffer. The 576-row maximum preserves the full interlaced
+  * PAL active canvas. Allocated once the supersampling scale is known. */
+ static uint32_t*     sdl_pixel_buf = nullptr;
++/* Private enhanced-front-end companion. Preserve GPU work and stock pacing. */
++static bool hidden_companion = false;
+ 
+ typedef void (*ModFrameHook)(void);
+ 
+@@ -6672,7 +6674,7 @@ static NetplayVblankEpilogue sdl_vblank_present_body(void) {
+                  * set in both SDL_WINDOW_FULLSCREEN and
+                  * SDL_WINDOW_FULLSCREEN_DESKTOP, so testing just that bit
+                  * detects "currently fullscreen, either mode". */
+-                else if (!key_repeat &&
++                else if (!hidden_companion && !key_repeat &&
+                          host_keymap_match_event(HOST_KEYMAP_FULLSCREEN,
+                                                  (int)key, (int)scancode,
+                                                  (int)mod)) {
+@@ -14820,7 +14822,9 @@ session_reboot:
+     sdl_audio_pump_midframe();
+ #endif
+ 
+-    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
++    const char* companion_mode = std::getenv("PSX_HIDDEN_COMPANION");
++    hidden_companion = companion_mode && std::strcmp(companion_mode, "1") == 0;
++    Uint32 win_flags = (hidden_companion ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_RESIZABLE;
+     if (g_video_renderer == 1) {
+         configure_core_gl_context_attributes();
+         win_flags |= SDL_WINDOW_OPENGL;
+@@ -14830,7 +14834,7 @@ session_reboot:
+      * borderless desktop fullscreen (keeps the desktop resolution, letterboxes
+      * the image), 2 = exclusive fullscreen (real display-mode change), 0 =
+      * windowed. Matches the in-game Alt+Enter / Cmd+Ctrl+F hotkey behaviour. */
+-    win_flags |= psx_fullscreen_flag_for_mode(g_fullscreen);
++    if (!hidden_companion) win_flags |= psx_fullscreen_flag_for_mode(g_fullscreen);
+     /* Open at the user-chosen window size (default 1280 wide) instead of the
+      * old hardcoded 640x480, so the game doesn't boot into a tiny window. The
+      * height follows the configured display aspect (4:3 native, wider for the
+@@ -14863,7 +14867,7 @@ session_reboot:
+      * the work area, decorations and taskbar included. Only when the request
+      * was "fit the display" (window_width unset) -- an explicit width is a
+      * deliberate choice and is left alone. */
+-    if (!g_fullscreen && !g_video_win_w_explicit)
++    if (!hidden_companion && !g_fullscreen && !g_video_win_w_explicit)
+         SDL_MaximizeWindow(sdl_window);
+ 
+     /* Host refresh: if the window's current panel matches the guest cadence,
