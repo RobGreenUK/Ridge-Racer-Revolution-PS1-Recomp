@@ -112,6 +112,7 @@ struct Settings: Codable, Equatable {
 
 struct ServiceView: View {
     @StateObject private var model = ServiceModel()
+    @State private var tab = "Display"
     @State private var nativeWidthInput = ""
     private let accent = Color(red: 0.98, green: 0.35, blue: 0.17)
     func alignNativeResolution() {
@@ -147,53 +148,91 @@ struct ServiceView: View {
                 Text("Custom width")
                 Spacer()
                 TextField("Pixels", text: $nativeWidthInput)
+                    .labelsHidden().accessibilityLabel("Custom rendering width in pixels")
                     .frame(width: 100).textFieldStyle(.roundedBorder).onSubmit { applyNativeWidth() }
                 Button("Apply") { applyNativeWidth() }
                 Text("× \(model.settings.nativeHeight)")
             }
-            Text("Only \(model.settings.nativeAspect) resolutions are available. Apply a custom width to calculate a matching height. Internal rendering resolution; display scaling is separate.")
+            note("Only \(model.settings.nativeAspect) resolutions are available. Apply a custom width to calculate a matching height. Internal rendering resolution; display scaling is separate.")
         }.onAppear { nativeWidthInput = String(model.settings.nativeWidth) }
             .onChange(of: model.settings.nativeWidth) { value in nativeWidthInput = String(value) }
     }
     var body: some View {
-        ScrollView { VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("RIDGE RACER").font(.system(size: 30, weight: .black, design: .rounded)).italic()
-                Text("REVOLUTION").font(.system(size: 24, weight: .black, design: .rounded)).foregroundStyle(accent)
-                Text("SERVICE MENU  /  USA · SLUS-00214  /  APPLE SILICON").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
-            }
-            Rectangle().fill(accent).frame(height: 3)
-            Text("Enhanced rendering").font(.headline)
-            Text("Render at your chosen resolution and refresh rate while retaining the original driving physics. Settings and saves remain separate from Ridge Racer.").font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Form {
-                Picker("Renderer", selection: $model.settings.nativeScene) {
-                    Text("Original").tag(false)
-                    Text("Enhanced — native rendering").tag(true)
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("RIDGE RACER").font(.system(size: 34, weight: .black, design: .rounded)).italic()
+                    Text("REVOLUTION").font(.system(size: 22, weight: .black, design: .rounded)).foregroundStyle(accent)
+                    Text("SERVICE MENU   /   USA · SLUS-00214").font(.system(size: 11, weight: .semibold, design: .monospaced)).tracking(1.7).foregroundStyle(.secondary)
                 }
-                if model.settings.nativeScene {
-                    Picker("Aspect ratio", selection: Binding(get: { model.settings.nativeAspect }, set: { aspect in
-                        model.settings.nativeAspect = aspect
-                        alignNativeResolution()
-                    })) {
-                        Text("4:3").tag("4:3"); Text("16:9").tag("16:9")
+                Spacer()
+                Label("APPLE SILICON", systemImage: "desktopcomputer").font(.system(size: 10, weight: .bold)).padding(9).background(.white.opacity(0.07), in: Capsule())
+            }.padding(28)
+            Rectangle().fill(accent).frame(height: 3)
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 9) {
+                    ForEach(["Display", "Image", "Motion", "Controls"], id: \.self) { name in
+                        Button { tab = name } label: {
+                            HStack { Image(systemName: icon(name)).frame(width: 20); Text(name); Spacer() }
+                                .padding(12).background(tab == name ? accent.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        }.buttonStyle(.plain).foregroundStyle(tab == name ? .white : .secondary)
                     }
-                    nativeResolution
-                    HStack {
-                        Text("Frame rate")
-                        TextField("0 = display", value: $model.settings.nativeFps, format: .number.grouping(.never)).frame(width: 90).textFieldStyle(.roundedBorder)
-                        Button("Display") { model.settings.nativeFps = 0 }
-                        ForEach([60,120,144], id: \.self) { fps in
-                            Button("\(fps)") { model.settings.nativeFps = fps }
-                        }
-                    }
-                    Toggle("Perspective-correct textures", isOn: $model.settings.perspective)
-                    Toggle("Full course visibility", isOn: $model.settings.fullScene)
-                    Picker("CPU car draw distance", selection: $model.settings.nativeCarDistance) {
-                        Text("All cars · unlimited").tag(0); Text("1× · original").tag(1)
-                        ForEach(2...5, id: \.self) { Text("\($0)×").tag($0) }
-                    }
-                    Toggle("Developer frame-time graph (G)", isOn: $model.settings.frameGraph)
-                } else {
+                    Spacer()
+                    Text("ORIGINAL TIMING\n59.94 Hz guest clock").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).lineSpacing(4)
+                    Text("Presentation settings never overclock the game.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }.padding(18).frame(width: 190).background(.black.opacity(0.16))
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text(tab).font(.title2.bold())
+                        Group {
+                            switch tab {
+                            case "Display": display
+                            case "Image": image
+                            case "Motion": motion
+                            default: controls
+                            }
+                        }.disabled(model.running)
+                    }.padding(26).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            Divider()
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(model.running ? "ON TRACK" : "READY TO RACE").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(accent)
+                    Text(model.message.isEmpty ? "Settings and memory cards are private to Revolution." : model.message).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Save") { model.save() }.disabled(model.running)
+                Button(model.running ? "Running…" : "Launch game  →") { model.launch() }
+                    .buttonStyle(.borderedProminent).tint(accent).disabled(model.running).keyboardShortcut(.defaultAction)
+            }.padding(22)
+        }.onChange(of: model.settings.nativeAspect) { _ in alignNativeResolution() }
+            .onChange(of: model.settings.nativeScene) { _ in alignNativeResolution() }
+            .frame(minWidth: 820, idealWidth: 860, minHeight: 650, idealHeight: 690)
+            .background(Color(red: 0.075, green: 0.085, blue: 0.105)).preferredColorScheme(.dark)
+            .alert("Unable to complete action", isPresented: Binding(get: { !model.error.isEmpty }, set: { if !$0 { model.error = "" } })) {
+                Button("OK") { model.error = "" }
+            } message: { Text(model.error) }
+    }
+    func icon(_ s: String) -> String {
+        ["Display":"display", "Image":"slider.horizontal.3", "Motion":"speedometer", "Controls":"gamecontroller"][s]!
+    }
+    func note(_ text: String) -> some View { Text(text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+    var display: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if model.settings.nativeScene {
+                Picker("Aspect ratio", selection: $model.settings.nativeAspect) {
+                    Text("Original · 4:3").tag("4:3")
+                    Text("Widescreen · 16:9").tag("16:9")
+                }
+                nativeResolution
+                Toggle("Full course visibility", isOn: $model.settings.fullScene)
+                Picker("CPU car draw distance", selection: $model.settings.nativeCarDistance) {
+                    Text("All cars · unlimited").tag(0)
+                    Text("1× · original").tag(1)
+                    ForEach(2...5, id: \.self) { Text("\($0)×").tag($0) }
+                }
+            } else {
                 Picker("Render resolution", selection: $model.settings.scale) {
                     Text("320 × 240 — original").tag(1)
                     Text("640 × 480 — 2×").tag(2)
@@ -203,40 +242,77 @@ struct ServiceView: View {
                 Picker("Window size", selection: $model.settings.width) {
                     ForEach([640,960,1280,1600,1920,2560], id: \.self) { w in Text("\(w) × \(w*3/4)").tag(w) }
                 }
+            }
+            Picker("Display mode", selection: $model.settings.fullscreen) {
+                Text("Windowed").tag(0); Text("Borderless fullscreen").tag(1); Text("Fullscreen").tag(2)
+            }
+            note("Choose Original or Enhanced rendering in Motion. Changes apply when you launch the game.")
+        }
+    }
+    var image: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Picker("Texture filtering", selection: $model.settings.filtering) {
+                Text("Sharp / nearest").tag("nearest"); Text("Smooth / bilinear").tag("bilinear")
+            }
+            if model.settings.nativeScene {
+                Toggle("Perspective-correct textures", isOn: $model.settings.perspective)
+                note("On: textures stay stable as surfaces recede into the distance. Off: affine mapping recreates PlayStation texture warping.")
+            } else {
+                Toggle("Antialiasing", isOn: $model.settings.antialiasing)
+            }
+        }
+    }
+    var motion: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Picker("Renderer", selection: $model.settings.nativeScene) {
+                Text("Original").tag(false)
+                Text("Enhanced — native rendering").tag(true)
+            }
+            note("Render at your chosen resolution and frame rate while retaining the original driving physics, race timers and audio timing.")
+            if model.settings.nativeScene {
+                HStack {
+                    Text("Frames per second")
+                    Spacer()
+                    TextField("0 = display", value: $model.settings.nativeFps, format: .number.grouping(.never))
+                        .labelsHidden().frame(width: 100).textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Frames per second; zero matches display")
                 }
-                Picker("Display mode", selection: $model.settings.fullscreen) {
-                    Text("Windowed").tag(0);Text("Borderless fullscreen").tag(1);Text("Fullscreen").tag(2)
+                HStack {
+                    Text("Quick target")
+                    Button("Display") { model.settings.nativeFps = 0 }
+                    ForEach([60, 120, 144], id: \.self) { fps in
+                        Button("\(fps) fps") { model.settings.nativeFps = fps }
+                    }
                 }
-                Picker("Texture filtering", selection: $model.settings.filtering) {
-                    Text("Sharp / nearest").tag("nearest");Text("Smooth / bilinear").tag("bilinear")
-                }
-                if !model.settings.nativeScene { Toggle("Antialiasing", isOn: $model.settings.antialiasing) }
-                Picker("VSync", selection: $model.settings.vsync) {
-                    Text("On").tag("on");Text("Off").tag("off");Text("Adaptive").tag("adaptive")
-                }
-                Toggle("Low latency input sampling", isOn: $model.settings.lowLatency)
-                Toggle("Rewind", isOn: $model.settings.rewind)
-                if model.settings.rewind { Text("F8 rewinds when the original companion window has focus. In the enhanced window, P/F8 captures a visual issue.").font(.caption).foregroundStyle(.secondary) }
-            }.disabled(model.running)
-            Text(model.settings.nativeScene ? "VSync caps presentation to your display refresh rate. Press P to save a screenshot and diagnostic snapshot; frame times are recorded automatically." : "Input is sampled again after frame pacing. This does not change the physics rate.").font(.caption).foregroundStyle(.secondary)
+                note("0 matches your display refresh rate. Set a custom target from 30 to 360 FPS, or choose a preset above. Aspect ratio and render resolution are in Display.")
+                Toggle("Developer frame-time graph (G)", isOn: $model.settings.frameGraph)
+                note("G toggles the graph while playing. Press P to save a screenshot and diagnostic snapshot; frame times are recorded automatically.")
+            }
+            Picker("VSync", selection: $model.settings.vsync) {
+                Text("On").tag("on"); Text("Off").tag("off"); Text("Adaptive").tag("adaptive")
+            }
+            Toggle("Low latency input sampling", isOn: $model.settings.lowLatency)
+            note("VSync caps presentation to your display refresh rate. Low latency sampling refreshes input after frame pacing without changing the physics rate.")
+        }
+    }
+    var controls: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Keyboard & gamepad").font(.headline)
+            note("Enter → Start · Arrows → Steer\nX / Space → Accelerate · Z → Brake\nClick the enhanced window to use its keyboard controls.")
+            Toggle("Rewind", isOn: $model.settings.rewind)
+            note("F8 rewinds when the original companion window has focus. In the enhanced window, P/F8 captures a visual issue.")
+            Button("Controls & advanced settings…") { model.launch(advanced: true) }
+            note("Opens PSXRecomp’s full launcher for controller bindings and advanced settings. Settings are reloaded here when it closes.")
             Divider()
-            HStack {
-                Button("Controls & advanced settings") { model.launch(advanced: true) }
-                Button("Diagnostics") { NSWorkspace.shared.open(model.root.appendingPathComponent("diagnostics")) }
-                Spacer()
-                Button("Save") { model.save() }
-                Button(model.running ? "Game running…" : "Launch game") { model.launch() }.buttonStyle(.borderedProminent).tint(accent)
-            }.disabled(model.running)
-            Text(model.message.isEmpty ? "Settings and memory cards are private to Revolution." : model.message).font(.caption).foregroundStyle(.secondary)
-        }.padding(28) }.frame(width: 726, height: 850).preferredColorScheme(.dark)
-        .alert("Ridge Racer Revolution", isPresented: Binding(get: { !model.error.isEmpty }, set: { if !$0 { model.error = "" } })) {
-            Button("OK") { model.error = "" }
-        } message: { Text(model.error) }
+            Button("Diagnostics") { NSWorkspace.shared.open(model.root.appendingPathComponent("diagnostics")) }
+            Button("Show settings file") { NSWorkspace.shared.activateFileViewerSelecting([model.root.appendingPathComponent("build-macos/settings.toml")]) }
+        }
     }
 }
 @main struct RevolutionServiceMenu: App {
     var body: some Scene {
-        WindowGroup("Ridge Racer Revolution") { ServiceView() }
-            .windowResizability(.contentSize)
+        Window("Ridge Racer Revolution · Service Menu", id: "service") { ServiceView() }
+            .windowResizability(.contentMinSize)
+            .defaultSize(width: 860, height: 690)
     }
 }
