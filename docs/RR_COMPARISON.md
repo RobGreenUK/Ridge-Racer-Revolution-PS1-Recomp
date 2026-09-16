@@ -48,7 +48,7 @@ copying RR's guest addresses. See the architecture guide for the handoff contrac
 
 | RR feature/fix | Why it was not copied | Required evidence before a port |
 |---|---|---|
-| Additional enhanced replay states | RR state numbers are unrelated to Revolution's state table; RRR currently gates enhanced scenes on 17/19. | Verify each RRR mode, camera transition, snapshot readiness and replay identity. |
+| Other enhanced 3D modes | Post-race replay state 32 is now supported alongside race/attract 17/19. Other state numbers are not interchangeable with RR. | Verify each additional RRR mode and its camera, recorded entities and capture boundaries before enabling it. |
 | Car/shadow contact depth shader | RRR uses different parts, depth layers and a road tolerance; RR tags and hooks are game-specific. | Verify original shadow submissions and road-plane selection across courses, slopes, jumps and mirror passes. |
 | Fallen-sign lifetime and replay history | RR's object addresses, state transitions and recorded indices cannot identify Revolution's objects. | Find the corresponding RRR lifecycle, prove the defect and preserve original movement/collision. |
 | Widescreen HUD edge anchors | RRR has different packet parsing, minimap and rear-view overlays. | Compare 4:3 identity and all widescreen groups in race, menus and replay. |
@@ -111,3 +111,44 @@ resident invalidation and upload counters. Local before/after saved-scene replay
 checks must preserve pixels while comparing draw costs. Neither a stable CPU frame
 graph nor faster draw work alone establishes perceptually smooth display scanout;
 a full-course playtest remains necessary for a reported temporal symptom.
+
+## Post-race replay
+
+The RR fix's shared presentation-mode classification is adapted to Revolution's
+verified USA state table at `80070EAC`. State 32 (`80026EE0`) plays the recorded
+post-race sequence; race state 17 enters it through replay initialization at
+`80026D1C`. State 32 now enables model capture, expanded scenery, background/HUD
+composition and enhanced-frame routing together. Unsupported modes keep their
+original framebuffer path. No RR state IDs or guest addresses are reused.
+
+Readiness requires the matching state handler, a recognized course, a captured
+replay camera and initialized geometry. The tail of a race handler that changes
+the state to replay cannot publish its race geometry as a ready replay. Empty
+setup and replay exit clear readiness; the viewer clears its buffered scene when
+falling back.
+
+The camera hook at `8002C290` observes its mode and followed-car arguments. In
+track-camera mode 0, the selected record's tag is copied by the original game to
+`801DE36C`; this identifies shot changes, including cuts without a large positional
+jump. Mode, target and shot identity are transported with the scene. Interpolation
+holds the old shot until the new source timestamp, then cuts; continuous movement
+within a shot still interpolates.
+
+Replay restoration at `800263AC` updates a recorded car pair. The enhanced renderer
+therefore keeps original replay car submissions instead of evaluating all eleven
+race opponents, which could resurrect stale cars. Physics, recorded motion, audio,
+replay duration and controls remain under the original game.
+
+Rebuild **both** runtime and viewer after updating: the snapshot ABI is version 5
+(`RRV_SHARED_MAGIC=0x52525635`) with appended camera identity. Older local raw
+snapshot captures are not compatible with the new viewer. The normal Mac build
+also regenerates the overlay hooks from `game.toml`.
+
+Validation: all 21 project tests pass, including replay readiness/fallback and
+same-position camera-cut regressions. Eight saved race views are pixel-identical
+to the previous renderer. An isolated controlled finish exercised a full 60-second
+state-32 replay: its setup frame used fallback, followed by 3,600 enhanced render
+frames, seven observed camera identities, and 2D fallback on exit. Original and
+enhanced replay views were inspected locally. The diagnostic used an accumulated
+recording and a controlled finish transition, so this does not replace a natural
+full-course playtest or verify every course, replay control and camera path.

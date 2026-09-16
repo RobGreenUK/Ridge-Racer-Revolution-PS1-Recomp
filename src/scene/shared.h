@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-#define RRV_SHARED_MAGIC 0x52525634u
+#define RRV_SHARED_MAGIC 0x52525635u
 #define RRV_MODEL_CAP 512
 #define RRV_HUD_CAP 8192
 #define RRV_SKY_CAP 512
@@ -16,6 +16,7 @@ struct RRVSnapshot {
     uint32_t hud[RRV_HUD_CAP],sky[RRV_SKY_CAP];
     uint16_t vram[1024*512];
     uint32_t screen[640*512];
+    uint32_t camera_valid,camera_mode,camera_target,camera_shot;
 };
 struct RRVShared {
     uint32_t magic,size;

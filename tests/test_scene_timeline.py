@@ -121,6 +121,22 @@ int main() {
         a.camera.x=0;b.camera.x=5000;playback.push(a,1);playback.push(b,b.time);
         playback.at(1+1./60+1./30+1./75,1./75,&info);assert(info.held); // camera cut
     }
+    {
+        // Distinct replay shots can share a camera position. Cut on identity,
+        // not just distance; continuous motion within a shot still interpolates.
+        Frame a{},b{};a.flags=b.flags=32;a.time=1;b.time=1+1./30;
+        a.cameraIdentity={1,0,0x8007c438,7};b.cameraIdentity=a.cameraIdentity;
+        b.rotation={0,1,0,0};
+        assert(std::abs(interpolate(a,b,1+1./60).rotation.w)<.8);
+        for(int field=1;field<4;field++){
+            b.cameraIdentity=a.cameraIdentity;b.cameraIdentity[field]++;
+            assert(interpolate(a,b,1+1./60).rotation.w==1);
+            assert(interpolate(a,b,b.time).rotation.w==0);
+            PresentationTimeline t;t.push(a,a.time);t.push(b,b.time);
+            auto held=t.at(1+1./60+1./30+1./75,1./75);
+            assert(held.rotation.w==1);
+        }
+    }
     std::vector<Frame> frames;
     // NTSC-derived 29.97 sample rate vs exact 60/120/144 presentation.
     for(int i=0;i<=300;i++) {

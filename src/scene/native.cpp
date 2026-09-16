@@ -54,7 +54,7 @@ struct Bridge {
 };
 static Quat rotation(const int16_t*m){std::array<float,9>a;for(int i=0;i<9;i++)a[i]=m[i]/4096.f;return matrixRotation(a);}
 static Frame decode(const RRVSnapshot&s,bool mirror){
-    Frame f{};f.time=double(s.cycles)/33868800.;f.flags=s.state;f.camera={float(s.camera[0]),float(s.camera[1]),float(s.camera[2])};f.rotation=rotation(mirror?s.mirror_matrix:s.matrix);
+    Frame f{};f.cameraIdentity={s.camera_valid,s.camera_mode,s.camera_target,s.camera_shot};f.time=double(s.cycles)/33868800.;f.flags=s.state;f.camera={float(s.camera[0]),float(s.camera[1]),float(s.camera[2])};f.rotation=rotation(mirror?s.mirror_matrix:s.matrix);
     Quat inverse{-f.rotation.x,-f.rotation.y,-f.rotation.z,f.rotation.w};
     for(unsigned i=0;i<s.model_count;i++){
         const auto&m=s.models[i];if(bool(m.pass)!=mirror)continue;

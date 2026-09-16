@@ -90,12 +90,16 @@ synthetic data; live validation must also exercise Galaga and entering a race.
 
 [live.c](../src/scene/live.c) observes Revolution's verified submission boundaries,
 collects model/HUD/sky data and publishes a snapshot. Enhanced scene candidates
-are currently states 17 and 19 with a recognized course and initialized model
-state. Other delivered states use the original framebuffer. This does not imply
-that every intro/replay state is covered.
+are states 17 (race), 19 (attract) and 32 (post-race replay), classified by
+`presentation_mode.h`. Readiness requires a recognized course, matching active
+handler and initialized models; replay additionally requires a captured camera.
+Other delivered states use the original framebuffer. See the
+[replay contract](RR_COMPARISON.md#post-race-replay) for verified addresses,
+recorded-car limits and camera cuts.
 
 [shared.h](../src/scene/shared.h) defines a fixed-layout mapped structure with a
-magic/version, size, sequence, publication timestamp and bounded arrays. A snapshot
+magic/version, size, sequence, publication timestamp and bounded arrays. Version 5
+adds replay camera mode, target and shot identity; rebuild both processes together. A snapshot
 contains up to 512 models, HUD/sky words, full VRAM and original-screen pixels.
 The producer and viewer use nonblocking `flock` around exchange; contention skips
 visual publication/consumption rather than blocking the simulation. The viewer
