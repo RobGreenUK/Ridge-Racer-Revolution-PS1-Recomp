@@ -1,6 +1,7 @@
 /* Nonblocking local scene transport. Simulation state is read-only;
  * viewer input is applied only at the verified digital controller boundary. */
 #include "shared.h"
+#include "presentation_mode.h"
 #include "cpu_state.h"
 #include "mod_plugins.h"
 #include "psx_cycles.h"
@@ -42,7 +43,7 @@ static void audit_model(const struct RRVModel*m){
 }
 static void audit_report(void){if(audit_enabled)fprintf(stderr,"Revolution submission audit: %u checks, %u mismatches\n",audit_checks,audit_errors);}
 
-static uint32_t owner,ready_state,ready_course;static int scene_ready,main_scene_active;static char path[1024];
+static uint32_t owner,ready_state,ready_course,render_state=~0u;static int scene_ready,main_scene_active;static char path[1024];
 extern const uint16_t*gpu_get_vram(void);
 static uint64_t now(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return(uint64_t)t.tv_sec*1000000000+t.tv_nsec;}
 static void cleanup(void){if(shared)munmap(shared,sizeof *shared);if(fd>=0){close(fd);unlink(path);}shared=NULL;fd=-1;}
@@ -124,12 +125,16 @@ static void boundary(const CPUState*cpu){
     main_scene_active=1;
     frame.cycles=psx_cycle_count;frame.sequence++;frame.state=psx_mod_read_half(0x801DD0BC);
     uint32_t base=psx_mod_read_word(0x801DD200);int id=course(base);frame.course=id<0?~0u:(uint32_t)id;
-    int candidate=(frame.state==17||frame.state==19)&&id>=0;
+    int candidate=revolution_scene_state(frame.state)&&render_state==frame.state&&id>=0;
+    if(revolution_replay_state(frame.state)&&!frame.camera_valid)candidate=0;
     if(!candidate||ready_state!=frame.state||ready_course!=frame.course)scene_ready=0;
     ready_state=frame.state;ready_course=frame.course;
     if(candidate&&frame.model_count)scene_ready=1;
     frame.valid=candidate&&scene_ready;frame.full_scene=full_scene;
-    if(frame.valid&&car_distance!=1)complete_cars(cpu);
+    // Replay restores only its recorded car pair, not all eleven race records.
+    // Keep original replay submissions; never reconstruct stale race opponents.
+    if(frame.valid&&!revolution_replay_state(frame.state)&&car_distance!=1)complete_cars(cpu);
+    frame.camera_shot=frame.camera_valid&&frame.camera_mode==0?psx_mod_read_word(0x801DE36C):0;
     for(unsigned i=0;i<3;i++)frame.camera[i]=(int32_t)psx_mod_read_word(0x801DE360+i*4);
     for(unsigned i=0;i<9;i++)frame.matrix[i]=(int16_t)psx_mod_read_half(0x801F9A5C+i*2);
     frame.hud_count=frame.sky_count=0;frame.screen_width=frame.screen_height=0;frame.mirror_enabled=0;
@@ -153,7 +158,7 @@ static void boundary(const CPUState*cpu){
     }
     const uint16_t*vram=gpu_get_vram();if(vram)memcpy(frame.vram,vram,sizeof frame.vram);
     publish();
-    reference_count=0;frame.model_count=0;owner=0;scenery_owned[0]=scenery_owned[1]=0;
+    reference_count=0;frame.model_count=0;owner=0;render_state=~0u;scenery_owned[0]=scenery_owned[1]=0;
 }
 static void hook(CPUState*cpu,uint32_t address){
     if(address==0x80040194){
@@ -163,16 +168,27 @@ static void hook(CPUState*cpu,uint32_t address){
         psx_mod_write_byte(0x801DC906,buttons&255);psx_mod_write_byte(0x801DC907,buttons>>8);return;
     }
     if(address==0x80036934){
-        unsigned state=psx_mod_read_half(0x801DD0BC);if(!full_scene||(state!=17&&state!=19))return;
+        unsigned state=psx_mod_read_half(0x801DD0BC);if(!full_scene||!revolution_scene_state(state))return;
         audit_reference(cpu,address);
         struct RRVModel models[RRV_MODEL_CAP];int n=revolution_evaluate(memory_get_ram_ptr(),memory_get_scratchpad_ptr(),cpu,address,1,models,RRV_MODEL_CAP);
         unsigned pass=psx_mod_read_word(0x1F800030)?1:0;
         if(n>=0&&frame.model_count+(unsigned)n<=RRV_MODEL_CAP){memcpy(frame.models+frame.model_count,models,n*sizeof models[0]);frame.model_count+=n;scenery_owned[pass]=1;}return;
     }
-    if(address==0x800232C4){owner=0;return;}
-    if(address==0x8001B660){owner=cpu->gpr[4];unsigned st=psx_mod_read_half(0x801DD0BC);if(st==17||st==19)audit_reference(cpu,address);return;}
+    if(address==0x800232C4||address==0x800524EC||address==0x80026EE0){
+        render_state=psx_mod_read_half(0x801DD0BC);owner=0;
+        frame.camera_valid=0;frame.camera_mode=frame.camera_target=frame.camera_shot=0;return;
+    }
+    if(address==0x8002C290){
+        if(revolution_replay_state(psx_mod_read_half(0x801DD0BC))){
+            // Verified replay-camera arguments: mode and followed car. Mode 0
+            // selects a track camera record whose tag is copied to E36C.
+            frame.camera_mode=cpu->gpr[4];frame.camera_target=cpu->gpr[5];
+            frame.camera_valid=cpu->gpr[4]<6;
+        }return;
+    }
+    if(address==0x8001B660){owner=cpu->gpr[4];unsigned st=psx_mod_read_half(0x801DD0BC);if(revolution_scene_state(st))audit_reference(cpu,address);return;}
     if(address==0x80057578){if(cpu->gpr[31]==0x80019D00)boundary(cpu);return;}
-    unsigned state=psx_mod_read_half(0x801DD0BC);if(state!=17&&state!=19)return;
+    unsigned state=psx_mod_read_half(0x801DD0BC);if(!revolution_scene_state(state))return;
     unsigned ctx=cpu->gpr[4],index=cpu->gpr[5];
     if(index>4096||frame.model_count>=RRV_MODEL_CAP)return;
     uint32_t bank=psx_mod_read_word(ctx+12),base=psx_mod_read_word(0x801DD200);int id=course(base);if(id<0)return;
@@ -202,6 +218,6 @@ PSX_MOD_CONSTRUCTOR(register_revolution_live){
     void*map=mmap(NULL,sizeof(struct RRVShared),PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);if(map==MAP_FAILED){cleanup();return;}
     shared=map;memset(shared,0,sizeof *shared);shared->magic=RRV_SHARED_MAGIC;shared->size=sizeof *shared;atexit(cleanup);
     mod_register_frame_hook(startup_frame);
-    uint32_t entries[]={0x80036934,0x80057578,0x800232C4,0x8001B660,0x80053D24,0x80054654,0x80054914,0x800552F8,0x80055A58,0x80040194};
+    uint32_t entries[]={0x800524EC,0x80026EE0,0x8002C290,0x80036934,0x80057578,0x800232C4,0x8001B660,0x80053D24,0x80054654,0x80054914,0x800552F8,0x80055A58,0x80040194};
     for(unsigned i=0;i<sizeof(entries)/sizeof(entries[0]);i++)psx_mod_register_function_entry_plugin("revolution.scene.live",entries[i],hook);
 }
