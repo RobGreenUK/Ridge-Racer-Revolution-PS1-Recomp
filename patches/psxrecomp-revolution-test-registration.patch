@@ -1,0 +1,21 @@
+diff --git a/recompiler/CMakeLists.txt b/recompiler/CMakeLists.txt
+index 742878f4..687480c6 100644
+--- a/recompiler/CMakeLists.txt
++++ b/recompiler/CMakeLists.txt
+@@ -696,6 +696,16 @@ target_include_directories(reachable_discovery_test PRIVATE
+ )
+ target_link_libraries(reachable_discovery_test PRIVATE fmt)
+ 
++# The game-owned Revolution patch adds a synthetic code-generation regression.
++if(BUILD_TESTING)
++    find_package(Python3 COMPONENTS Interpreter REQUIRED)
++    add_test(NAME revolution_reserved_guard
++        COMMAND ${Python3_EXECUTABLE}
++            ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_revolution_reserved_guard.py
++            --recompiler $<TARGET_FILE:psxrecomp-game>
++        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
++endif()
++
+ # ---- test-registration completeness guard -----------------------------------
+ # Reads both CMakeLists.txt files as text, so it catches an orphan in either
+ # project from whichever one is being configured. Placed before the collision

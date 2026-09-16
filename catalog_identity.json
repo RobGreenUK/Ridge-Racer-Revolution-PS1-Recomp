@@ -1,0 +1,46 @@
+{
+  "format_version": 1,
+  "game": {
+    "name": "RidgeRacerRevolution",
+    "id": "SLUS-00214",
+    "boot_exe": "SLUS_002.14"
+  },
+  "marketing": {
+    "description": "",
+    "publisher": "",
+    "year": "",
+    "region": "USA",
+    "players": 1
+  },
+  "rom_identity": {
+    "cue_name": "Ridge Racer Revolution (USA).cue",
+    "bin_name": "Ridge Racer Revolution (USA) (Track 01).bin",
+    "track_counts": [
+      20
+    ],
+    "require_cue": true,
+    "data_track": {
+      "size": 11016768,
+      "md5": "05bc24fa7c79bb0a408e4ed393bfbd63",
+      "sha1": "8d13342e1d203075159a2f5cea141c38dafd1b74",
+      "crc32": "daea0d25"
+    },
+    "disc_fp": "3534e3127fc02bbf3da30b4a1f4703af2d5138f0b27f9f0705793db295cc6cd4"
+  },
+  "exe": {
+    "load_address": "0x80080000",
+    "entry_pc": "0x800814C8",
+    "text_size": "0x00029800",
+    "stack_base": "0x801FFFF0"
+  },
+  "seeds": {
+    "count": 236,
+    "source": "boot_exe_jal"
+  },
+  "warnings": [],
+  "notes": [
+    "entry_pc/load_address/text_size/stack_base taken from PS-X EXE header.",
+    "seeds are first-pass boot-EXE JAL targets (+ entry); expect to grow as overlays / runtime paths are discovered.",
+    "required_disc_fp is psxrecomp-toc-v1 (matches runtime DiscIdentity)."
+  ]
+}

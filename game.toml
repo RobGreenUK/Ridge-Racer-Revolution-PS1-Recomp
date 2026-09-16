@@ -1,0 +1,55 @@
+# Autofilled by tools/new_project_layout/probe_disc.py from your legal dump.
+# Review before shipping. Runtime quirks / overlay seeds still need hand work.
+
+[game]
+name = "RidgeRacerRevolution"
+id = "SLUS-00214"
+players = 1
+exe = "disc/SLUS_002.14"
+disc = "disc-images/Ridge Racer Revolution (USA).cue"
+load_address = "0x80080000"
+entry_pc = "0x800814C8"
+text_size = "0x00029800"
+stack_base = "0x801FFFF0"
+
+# Digests are for data Track 01 (first BINARY FILE / TRACK 01).
+[prepare_disc]
+out_dir = "disc"
+bin_name = "Ridge Racer Revolution (USA) (Track 01).bin"
+cue_name = "Ridge Racer Revolution (USA).cue"
+boot_exe = "SLUS_002.14"
+known_sizes = [11016768]
+known_md5 = [
+  "05bc24fa7c79bb0a408e4ed393bfbd63",
+]
+known_sha1 = [
+  "8d13342e1d203075159a2f5cea141c38dafd1b74",
+]
+known_crc32 = [
+  "daea0d25",
+]
+
+[recompiler]
+seeds = "seeds/ghidra_funcs.txt"
+out_dir = "generated"
+strict = true
+# Read-only scene hooks; inert unless REVOLUTION_SCENE_CAPTURE is set.
+mod_function_entry_funcs = ["80036934", "0x80057578", "0x800232C4", "0x8001B660", "0x80053D24", "0x80054654", "0x80054914", "0x800552F8", "0x80055A58", "0x80040194"]
+
+[runtime]
+window_title = "RidgeRacerRevolution Recompiled"
+memcard_dir = "saves"
+
+[video]
+renderer = "opengl"
+aspect_ratio = "4:3"
+
+[controller]
+default_mode = "digital"
+
+# Online mount gate: digests + track count + optional TOC fingerprint
+# (see docs/NETPLAY.md).
+[netplay]
+require_cue = true
+required_tracks = 20
+required_disc_fp = "3534e3127fc02bbf3da30b4a1f4703af2d5138f0b27f9f0705793db295cc6cd4"

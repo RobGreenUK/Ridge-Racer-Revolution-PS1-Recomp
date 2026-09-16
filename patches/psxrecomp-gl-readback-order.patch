@@ -1,0 +1,66 @@
+diff --git a/runtime/src/gpu_gl_renderer.c b/runtime/src/gpu_gl_renderer.c
+index 0fa3232a..5974e4c7 100644
+--- a/runtime/src/gpu_gl_renderer.c
++++ b/runtime/src/gpu_gl_renderer.c
+@@ -3260,7 +3260,10 @@ int gl_renderer_fbo_peek(int x, int y, int w, int h, uint16_t *out) {
+     if (!s_raster_ok || !s_ctx) return 0;
+     if (x < 0 || y < 0 || w < 1 || h < 1 ||
+         x + w > VRAM_W || y + h > VRAM_H) return 0;
+-    flush_cpu_upload();
++    /* Queued primitives already contribute pack debt. Realise them before
++     * packing clears it, even when there is no CPU upload to flush the batches.
++     * Otherwise a diagnostic peek poisons later CPU display readbacks. */
++    gl_renderer_flush_cpu_uploads();
+     rect_add(&s_pack_dirty, x, y, x + w - 1, y + h - 1);
+     pack_flush();
+     coh_record(GL_COH_PEEK, x, y, x + w - 1, y + h - 1);
+@@ -3282,7 +3285,7 @@ int gl_renderer_vram_diff(uint32_t *count, int bbox[4],
+     if (!s_raster_ok || !s_ctx) return 0;
+     uint16_t *tmp = (uint16_t *)malloc((size_t)VRAM_W * VRAM_H * 2);
+     if (!tmp) return 0;
+-    flush_cpu_upload();
++    gl_renderer_flush_cpu_uploads();
+     /* Force a full pack: the diff must read FBO truth even where the
+      * raw-mirror invariant (raw == FBO outside s_pack_dirty) is broken —
+      * a broken invariant is exactly what this tool hunts. */
+diff --git a/runtime/tests/test_gl_readback_region.c b/runtime/tests/test_gl_readback_region.c
+index 355eebab..f682dc12 100644
+--- a/runtime/tests/test_gl_readback_region.c
++++ b/runtime/tests/test_gl_readback_region.c
+@@ -28,6 +28,11 @@ static void verify(const char *label){
+ int main(int argc,char **argv){
+  int scale=argc>1?atoi(argv[1]):1;
+  if(SDL_Init(SDL_INIT_VIDEO)!=0)return 2;
++#ifdef __APPLE__
++ SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION,4);
++ SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,1);
++ SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_CORE);
++#endif
+  SDL_Window *win=SDL_CreateWindow("Readback coherence hidden test",0,0,128,128,SDL_WINDOW_OPENGL|SDL_WINDOW_HIDDEN);
+  if(!win)return 2;
+  for(int i=0;i<1024*512;i++)image[i]=(uint16_t)((i*17)&0x7fff);
+@@ -49,6 +54,24 @@ int main(int argc,char **argv){
+  glb_draw_flat_rect(40,40,16,16,0x4321);glb_vram_write(900,400,0x7117);glb_draw_flat_rect(600,410,13,7,0x2222);verify("disjoint upload inside readback union");
+  glb_draw_flat_rect(512,0,16,16,0x1234);
+  glb_draw_textured_rect(90,90,16,16,0,0,0,0,0x108);verify("texture pack does not clear CPU debt");
++ /* A diagnostic peek must realise queued geometry before consuming pack debt.
++  * Exercise both batch types without a CPU upload to incidentally flush them. */
++ for(int textured=0;textured<2;textured++){
++  glb_set_draw_area(0,0,1023,511);
++  glb_fill_rect(64,64,32,32,0);gl_renderer_sync_cpu();
++  if(textured)glb_draw_textured_rect(64,64,16,16,0,0,0,0,0x108);
++  else glb_draw_flat_rect(64,64,16,16,0x1234);
++  uint16_t peek[16*16];check(gl_renderer_fbo_peek(64,64,16,16,peek),"pending batch peek");
++  check(peek[0]==0x1234,"peek includes queued geometry");
++  check(glb_vram_read(64,64)==0x1234,"peek preserves subsequent CPU readback");
++  verify("peek then CPU sync");
++  glb_draw_flat_rect(64,64,16,16,0x4321);
++  uint32_t differences=0;int box[4],samples[8][2];uint16_t px[8][2];
++  check(gl_renderer_vram_diff(&differences,box,samples,px)>0,"pending batch diff");
++  check(differences>0,"diff sees queued geometry ahead of CPU");
++  check(glb_vram_read(64,64)==0x4321,"diff preserves subsequent CPU readback");
++  verify("diff then CPU sync");
++ }
+  glb_fill_rect(1016,508,24,8,0x3210);verify("wrapping fill");
+  glb_copy_rect(40,40,42,41,12,12);verify("overlapping copy");
+  for(int mode=0;mode<4;mode++){
