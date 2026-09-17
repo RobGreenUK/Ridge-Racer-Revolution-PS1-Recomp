@@ -90,6 +90,23 @@ int main(){
         assert(before==after&&candidates[1]<candidates[0]);assert(mesh.culledChunks==1&&mesh.culledModels==1);
         SDL_SetRenderTarget(r,nullptr);SDL_DestroyTexture(target);
     }
+    // Menu models retain the GTE centre and omit static race geometry.
+    frame.menuScene=true;frame.models.resize(1);frame.projection={256,156,320};
+    mesh.focalScale=320.f/240;mesh.smooth=false;
+    for(int width:{320,480}){
+        auto*target=SDL_CreateTexture(r,SDL_PIXELFORMAT_RGBA8888,SDL_TEXTUREACCESS_TARGET,width,240);assert(target);
+        SDL_SetRenderTarget(r,target);SDL_SetRenderDrawColor(r,0,0,0,255);SDL_RenderClear(r);
+        mesh.resetFrameStats();mesh.draw(r,frame,{},width,240);auto actual=pixels(r);
+        assert(mesh.candidateTriangles==2);
+        double xsum=0,ysum=0;unsigned count=0;
+        for(int y=0;y<240;y++)for(int x=0;x<width;x++)if(actual[(y*width+x)*4]){xsum+=x+.5;ysum+=y+.5;count++;}
+        assert(count&&std::abs(xsum/count-(width/2+96))<1&&std::abs(ysum/count-156)<1);
+        SDL_SetRenderTarget(r,nullptr);SDL_DestroyTexture(target);
+    }
+    frame.menuScene=false;frame.projection={160,120,320};
+    auto background=decodeBackground({12,0x3c102030,0,0x00100000,0x00405060,320,0x000500ff,0x00708090,240u<<16,0x0000ff00,0x00a0b0c0,(240u<<16)|320,0x0000ffff});
+    assert(background.size()==1&&background[0].textured&&background[0].page==5&&background[0].clut==16);
+    assert(background[0].rgb[3][0]==192&&background[0].xy[3][1]==240);
     // Bounds must contain an actually visible point, including transformed
     // instances, camera rotation and the mirror's different projection.
     std::mt19937 random(42);std::uniform_real_distribution<float>d(-1000,1000);

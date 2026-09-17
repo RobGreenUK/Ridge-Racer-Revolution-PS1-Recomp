@@ -20,6 +20,9 @@ inline std::vector<BackgroundQuad> decodeBackground(const std::vector<uint32_t>&
         if(type==0x2c&&n==9){
             q.textured=true;q.page=(p[4]>>16)&511;q.clut=p[2]>>16;
             for(int v=0;v<4;v++){q.xy[v]=xy(p[1+v*2]);q.uv[v]={float(p[2+v*2]&255)/256,float((p[2+v*2]>>8)&255)/256};q.rgb[v]=rgb(p[0]);if(p[0]&0x01000000)q.rgb[v]={128,128,128};}
+        }else if(type==0x3c&&n==12){
+            q.textured=true;q.page=(p[5]>>16)&511;q.clut=p[2]>>16;
+            for(int v=0;v<4;v++){q.xy[v]=xy(p[1+v*3]);q.uv[v]={float(p[2+v*3]&255)/256,float((p[2+v*3]>>8)&255)/256};q.rgb[v]=rgb(p[v*3]);if(p[0]&0x01000000)q.rgb[v]={128,128,128};}
         }else if(type==0x38&&n==8){for(int v=0;v<4;v++){q.xy[v]=xy(p[v*2+1]);q.rgb[v]=rgb(p[v*2]);}}
         else if(type==0x60&&n==3){auto origin=xy(p[1]);for(int v=0;v<4;v++){q.xy[v]={origin[0]+float(v&1?p[2]&65535:0),origin[1]+float(v&2?p[2]>>16:0)};q.rgb[v]=rgb(p[0]);}}
         else continue;

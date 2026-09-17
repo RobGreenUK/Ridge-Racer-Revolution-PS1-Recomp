@@ -69,18 +69,18 @@ inline uint64_t modelKey(uint32_t owner,uint32_t site,uint32_t part){return (uin
 struct ModelPose { uint64_t key;uint32_t model;Vec position;std::array<float,9> matrix;uint32_t paletteOffset=0; };
 struct Sky {float pitch=0,yaw=0,roll=0;uint32_t mirror=0,clut=0,rgb=0,enabled=0;};
 struct Frame { double time; uint32_t flags; Vec camera; Quat rotation; Vec car; float yaw;std::vector<ModelPose> models;Sky sky;std::vector<uint32_t>hud;int hudDisplayX=0,hudDisplayY=0;std::vector<BackgroundQuad>background;
-    std::array<uint32_t,4> cameraIdentity{}; };
+    std::array<uint32_t,4> cameraIdentity{}; bool menuScene=false; std::array<float,3> projection{160,120,320}; };
 inline Frame interpolate(const Frame&a,const Frame&b,double time) {
     // State/camera discontinuities are cuts. Freeze previous scene until boundary.
     Vec delta=b.camera-a.camera;
-    if(b.time<=a.time || b.time-a.time>.15 || a.flags!=b.flags || a.cameraIdentity!=b.cameraIdentity ||
+    if(b.time<=a.time || b.time-a.time>.15 || a.flags!=b.flags || a.cameraIdentity!=b.cameraIdentity || a.projection!=b.projection ||
        delta.x*delta.x+delta.y*delta.y+delta.z*delta.z>4000.f*4000.f)
         return time<b.time?a:b;
     float t=static_cast<float>(std::clamp((time-a.time)/(b.time-a.time),0.,1.));
     float yawDelta=std::remainder(b.yaw-a.yaw,6.28318530718f);
     Frame result{time,a.flags,a.camera+(b.camera-a.camera)*t,slerp(a.rotation,b.rotation,t),
             a.car+(b.car-a.car)*t,a.yaw+yawDelta*t,{},{},{},0,0,{}};
-    result.cameraIdentity=a.cameraIdentity;
+    result.cameraIdentity=a.cameraIdentity;result.menuScene=a.menuScene;result.projection=a.projection;
     result.background=interpolateBackground(a.background,b.background,t);
     result.hud=a.hud;result.hudDisplayX=a.hudDisplayX;result.hudDisplayY=a.hudDisplayY;result.sky=a.sky;
     if(a.sky.enabled&&b.sky.enabled&&a.sky.mirror==b.sky.mirror) {

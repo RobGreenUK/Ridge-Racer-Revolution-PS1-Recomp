@@ -71,6 +71,8 @@ sh scripts/run-macos.sh
 
 Select **Original** or **Enhanced — native rendering** in the service menu’s
 **Motion** tab. Enhanced mode shows Galaga, menus and racing in one game window.
+The music test, course-selection preview and car-selection preview also use
+enhanced 3D; their original menu controls are retained.
 See [controls and settings](docs/PLAY.md). Initial builds need Internet access for
 dependencies. Game code and assets are derived from your disc, not downloaded.
 
