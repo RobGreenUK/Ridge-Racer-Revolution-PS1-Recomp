@@ -46,6 +46,9 @@ aspect_ratio = "4:3"
 
 [controller]
 default_mode = "digital"
+# These pre-DualShock games reject analog (0x73) packets. Keep modern
+# gamepads on the supported digital protocol, including stale saved modes.
+lock_mode = true
 
 # Online mount gate: digests + track count + optional TOC fingerprint
 # (see docs/NETPLAY.md).
