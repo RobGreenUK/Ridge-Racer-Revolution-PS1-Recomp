@@ -138,8 +138,9 @@ therefore keeps original replay car submissions instead of evaluating all eleven
 race opponents, which could resurrect stale cars. Physics, recorded motion, audio,
 replay duration and controls remain under the original game.
 
-Rebuild **both** runtime and viewer after updating: the snapshot ABI is version 5
-(`RRV_SHARED_MAGIC=0x52525635`) with appended camera identity. Older local raw
+Rebuild **both** runtime and viewer after updating: the current snapshot ABI is version 6
+(`RRV_SHARED_MAGIC=0x52525636`), retaining replay camera identity and adding menu
+projection/background capture. Older local raw
 snapshot captures are not compatible with the new viewer. The normal Mac build
 also regenerates the overlay hooks from `game.toml`.
 
@@ -176,3 +177,18 @@ remain byte-identical; six widescreen race views across EASY/MID/HIGH retain an
 identical mirror region, and a widescreen replay view is unchanged. The repositioned
 HUD was visually inspected. Other courses and unusual HUD states still benefit
 from gameplay coverage; no copyrighted captures are included in the repository.
+
+## Music test and selection previews
+
+Revolution's music-test state 29 and selection-menu model paths are now captured
+by the enhanced renderer. This uses verified Revolution handlers and ordering
+tables, not Ridge Racer guest addresses. Course and car selection use their
+existing CAR.RSO preview models and original menu projection; music test uses the
+race course with explicit camera readiness. Unrelated 2D menus still use the
+framebuffer fallback. See [the architecture contract](ARCHITECTURE.md#selection-menus-and-music-test).
+
+Validation includes an isolated runtime progressing through course and car
+previews and music test, using private diagnostic state selection to exercise
+these paths without touching user saves. Captures confirm enhanced geometry and
+retained UI. Synthetic readiness and real OpenGL projection checks pass. This is
+not an exhaustive human playtest of every selectable car, course and music camera.

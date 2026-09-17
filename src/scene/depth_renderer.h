@@ -22,7 +22,7 @@ struct DepthRenderer {
     std::map<std::pair<int,int>,GLuint> buffers;
     void close(){timer.close();if(vertexBuffer)glDeleteBuffers(1,&vertexBuffer);vertexBuffer=0;for(auto&entry:buffers)glDeleteRenderbuffersEXT(1,&entry.second);buffers.clear();}
     template<class Faces>
-    bool draw(SDL_Renderer*renderer,const std::vector<SDL_Texture*>&textures,const Faces&faces,int width,int height,bool perspective=true,float focalScale=320.f/240,bool smooth=false){
+    bool draw(SDL_Renderer*renderer,const std::vector<SDL_Texture*>&textures,const Faces&faces,int width,int height,bool perspective=true,float focalScale=320.f/240,bool smooth=false,float offsetX=0,float offsetY=0){
         if(std::strcmp(SDL_GetRendererName(renderer),"opengl")||!SDL_GetRenderTarget(renderer))return false;
         if(!SDL_FlushRenderer(renderer))throw std::runtime_error(SDL_GetError());
         if(measureGpu){timer.begin(frameId);gpuMs=timer.ms;gpuFrame=timer.frame;}
@@ -43,7 +43,7 @@ struct DepthRenderer {
         glMatrixMode(GL_TEXTURE);glPushMatrix();glLoadIdentity();
         glMatrixMode(GL_PROJECTION);glPushMatrix();glLoadIdentity();
         double near=20,far=150000,focal=height*focalScale;
-        glFrustum(-width*.5*near/focal,width*.5*near/focal,-height*.5*near/focal,height*.5*near/focal,near,far);
+        glFrustum((-width*.5-offsetX)*near/focal,(width*.5-offsetX)*near/focal,(-height*.5-offsetY)*near/focal,(height*.5-offsetY)*near/focal,near,far);
         glMatrixMode(GL_MODELVIEW);glPushMatrix();glLoadIdentity();
         glViewport(0,0,width,height);glDisable(GL_SCISSOR_TEST);glDisable(GL_CULL_FACE);
         glDisable(GL_LIGHTING);glDisable(GL_FOG);glDisable(GL_BLEND);

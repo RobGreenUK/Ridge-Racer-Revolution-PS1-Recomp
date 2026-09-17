@@ -34,7 +34,7 @@ seeds = "seeds/ghidra_funcs.txt"
 out_dir = "generated"
 strict = true
 # Read-only scene hooks; inert unless REVOLUTION_SCENE_CAPTURE is set.
-mod_function_entry_funcs = ["0x800524EC", "0x80026EE0", "0x8002C290", "80036934", "0x80057578", "0x800232C4", "0x8001B660", "0x80053D24", "0x80054654", "0x80054914", "0x800552F8", "0x80055A58", "0x80040194"]
+mod_function_entry_funcs = ["0x800520A8", "0x8004EA4C", "0x800524EC", "0x80026EE0", "0x8002C290", "80036934", "0x80057578", "0x800232C4", "0x8001B660", "0x80053D24", "0x80054654", "0x80054914", "0x800552F8", "0x80055A58", "0x80040194"]
 
 [runtime]
 window_title = "RidgeRacerRevolution Recompiled"

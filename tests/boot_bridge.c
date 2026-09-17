@@ -29,7 +29,7 @@ void gr_vram_transfer_out(int x,int y,int w,int h,uint16_t*out){
 }
 static void replay_tests(void){
     CPUState cpu={0};
-    for(unsigned s=0;s<47;s++)assert(revolution_scene_state(s)==(s==17||s==19||s==32));
+    for(unsigned s=0;s<47;s++)assert(revolution_scene_state(s)==(s==17||s==19||s==29||s==32));
     assert(!revolution_scene_state(~0u));
     word(0x801DD200,0x800A0000);word(0x800A0000,2072);word(0x800A0004,0x3fe48);
     // Synthetic valid model bank/context, with no game data.
@@ -61,6 +61,25 @@ static void replay_tests(void){
     half(0x801DD0BC,17);hook(&cpu,0x800232C4);
     cpu.gpr[4]=0x800C0000;cpu.gpr[5]=1;hook(&cpu,0x80053D24);boundary(&cpu);
     assert(shared->frame.valid&&evaluations>before&&!shared->frame.camera_valid);
+    // Music test follows an explicit camera, but must not resurrect race cars.
+    half(0x801DD0BC,29);hook(&cpu,0x800520A8);
+    cpu.gpr[4]=1;cpu.gpr[5]=0x801F9B18;hook(&cpu,0x8002C290);
+    cpu.gpr[4]=0x800C0000;cpu.gpr[5]=1;hook(&cpu,0x80053D24);
+    before=evaluations;boundary(&cpu);assert(shared->frame.valid&&evaluations==before);
+    // Selection previews work before course geometry has been loaded.
+    word(0x801DD200,0);half(0x801DD0BC,3);half(0x8019501C,3);
+    hook(&cpu,0x8004EA4C);cpu.gte_ctrl[24]=160<<16;cpu.gte_ctrl[25]=120<<16;cpu.gte_ctrl[26]=320;
+    hook(&cpu,0x80053D24);boundary(&cpu);
+    assert(shared->frame.valid&&shared->frame.menu_scene&&shared->frame.course==0);
+    assert(shared->frame.projection[2]==320&&shared->frame.models[0].owner==1);
+    hook(&cpu,0x8004EA4C);boundary(&cpu);assert(!shared->frame.valid); // never latch an empty menu
+    hook(&cpu,0x8004EA4C);hook(&cpu,0x80053D24);
+    half(0x8019501C,5);boundary(&cpu);assert(!shared->frame.valid); // submenu transition
+    hook(&cpu,0x8004EA4C);hook(&cpu,0x80053D24);
+    cpu.gte_ctrl[24]+=1<<16;hook(&cpu,0x80053D24);boundary(&cpu);
+    assert(!shared->frame.valid); // incompatible projection must fall back
+    half(0x8019501C,4);hook(&cpu,0x8004EA4C);hook(&cpu,0x80053D24);boundary(&cpu);
+    assert(!shared->frame.valid); // unrelated menu stays original
     // The opt-in smoke driver must not skip the replay it is testing.
     cpu.gpr[31]=0x80019E70;half(0x801DD0BC,32);
     for(unsigned i=0;i<240;i++){input(&cpu,0);assert(psx_mod_read_half(0x801DC906)==0xffff);}

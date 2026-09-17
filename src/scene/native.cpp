@@ -55,6 +55,11 @@ struct Bridge {
 static Quat rotation(const int16_t*m){std::array<float,9>a;for(int i=0;i<9;i++)a[i]=m[i]/4096.f;return matrixRotation(a);}
 static Frame decode(const RRVSnapshot&s,bool mirror){
     Frame f{};f.cameraIdentity={s.camera_valid,s.camera_mode,s.camera_target,s.camera_shot};f.time=double(s.cycles)/33868800.;f.flags=s.state;f.camera={float(s.camera[0]),float(s.camera[1]),float(s.camera[2])};f.rotation=rotation(mirror?s.mirror_matrix:s.matrix);
+    f.menuScene=s.menu_scene;
+    if(s.menu_scene){
+        f.cameraIdentity={1,s.menu_substate,0,0};
+        f.projection={s.projection[0]/65536.f,s.projection[1]/65536.f,float(s.projection[2]&65535)};
+    }
     Quat inverse{-f.rotation.x,-f.rotation.y,-f.rotation.z,f.rotation.w};
     for(unsigned i=0;i<s.model_count;i++){
         const auto&m=s.models[i];if(bool(m.pass)!=mirror)continue;
@@ -176,7 +181,7 @@ if(e.type==SDL_EVENT_KEY_DOWN&&!e.key.repeat&&e.key.key==SDLK_G)showGraph=!showG
         SDL_SetRenderTarget(r,target);SDL_SetRenderDrawColor(r,0,16,128,255);SDL_RenderClear(r);
         if(ready&&mesh){
             sky.drawBackground(r,f,mesh->sky.vram,width,height);
-            mesh->focalScale=320.f/240;mesh->draw(r,f,f.camera,width,height);
+            mesh->focalScale=f.projection[2]/240.f;mesh->draw(r,f,f.camera,width,height);
             // Composite the mirror before HUD lettering and its border.
             if(s.mirror_enabled&&s.state==17){
                 SDL_SetRenderTarget(r,mirrorTarget);SDL_SetRenderDrawColor(r,32,96,180,255);SDL_RenderClear(r);

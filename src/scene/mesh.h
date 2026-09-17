@@ -141,7 +141,7 @@ struct CourseMesh {
         return {a.position+(b.position-a.position)*t,a.u+(b.u-a.u)*t,a.v+(b.v-a.v)*t};
     }
     void draw(SDL_Renderer*renderer,const Frame&frame,Vec camera,int width,int height) {
-        const float cx=width/2.f,cy=height/2.f,focal=height*focalScale;
+        const float cx=width/2.f+(frame.projection[0]-160)*height/240.f,cy=frame.projection[1]*height/240.f,focal=height*focalScale;
         bool depthPass=std::strcmp(SDL_GetRendererName(renderer),"opengl")==0;
         uint64_t buildStart=SDL_GetTicksNS();
         faces.clear();
@@ -190,13 +190,13 @@ struct CourseMesh {
         };
         auto addQuad=[&](const MeshQuad&q,const ModelPose*pose){addTriangle(q,pose,{0,1,2});addTriangle(q,pose,{2,1,3});};
         bool night=nightScenery(frame);
-        if(chunkBounds.empty())for(const auto&q:quads)if(!q.dayOnly||!night)addQuad(q,nullptr);
-        for(size_t chunk=0;chunk<chunkBounds.size();chunk++){
+        if(!frame.menuScene&&chunkBounds.empty())for(const auto&q:quads)if(!q.dayOnly||!night)addQuad(q,nullptr);
+        for(size_t chunk=0;!frame.menuScene&&chunk<chunkBounds.size();chunk++){
             if(!chunkBounds[chunk].visible(frame,camera,nullptr,width,height,focalScale)){culledChunks++;continue;}
             for(size_t i=chunk*chunkSize;i<std::min(quads.size(),(chunk+1)*chunkSize);i++){const auto&q=quads[i];if(!q.dayOnly||!night)addQuad(q,nullptr);}
         }
         for(const auto&pose:frame.models){
-            if(pose.model<modelBounds.size()&&!modelBounds[pose.model].visible(frame,camera,&pose,width,height,focalScale)){culledModels++;continue;}
+            if(!frame.menuScene&&pose.model<modelBounds.size()&&!modelBounds[pose.model].visible(frame,camera,&pose,width,height,focalScale)){culledModels++;continue;}
             if(pose.model<models.size())for(const auto&q:models[pose.model])addQuad(q,&pose);
         }
         // Decode/upload only textures needed by surviving faces. Dirty off-screen
@@ -210,7 +210,7 @@ struct CourseMesh {
             // without stable_sort's temporary allocation.
             std::sort(faces.begin(),faces.end(),[](const Face&a,const Face&b){if(a.texture!=b.texture)return a.texture<b.texture;if(a.bias!=b.bias)return a.bias<b.bias;return a.order<b.order;});
             sortMs+=double(SDL_GetTicksNS()-sortStart)/1e6;uint64_t depthStart=SDL_GetTicksNS();
-            bool drawn=depthRenderer.draw(renderer,textures,faces,width,height,perspective,focalScale,smooth);
+            bool drawn=depthRenderer.draw(renderer,textures,faces,width,height,perspective,focalScale,smooth,cx-width/2.f,cy-height/2.f);
             depthMs+=double(SDL_GetTicksNS()-depthStart)/1e6;if(drawn)return;
         }
         // This approximate ordering is diagnostic, not a replacement for the

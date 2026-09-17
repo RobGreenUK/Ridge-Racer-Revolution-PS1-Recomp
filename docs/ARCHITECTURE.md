@@ -90,16 +90,18 @@ synthetic data; live validation must also exercise Galaga and entering a race.
 
 [live.c](../src/scene/live.c) observes Revolution's verified submission boundaries,
 collects model/HUD/sky data and publishes a snapshot. Enhanced scene candidates
-are states 17 (race), 19 (attract) and 32 (post-race replay), classified by
+are states 17 (race), 19 (attract), 29 (music test) and 32 (post-race replay), classified by
 `presentation_mode.h`. Readiness requires a recognized course, matching active
-handler and initialized models; replay additionally requires a captured camera.
-Other delivered states use the original framebuffer. See the
+handler and initialized models; music test and replay additionally require a captured camera.
+Verified selection-menu submodes also capture their model previews; other delivered states use the original framebuffer. See the
 [replay contract](RR_COMPARISON.md#post-race-replay) for verified addresses,
 recorded-car limits and camera cuts.
 
 [shared.h](../src/scene/shared.h) defines a fixed-layout mapped structure with a
-magic/version, size, sequence, publication timestamp and bounded arrays. Version 5
-adds replay camera mode, target and shot identity; rebuild both processes together. A snapshot
+magic/version, size, sequence, publication timestamp and bounded arrays. Version 6
+adds selection-menu identity and GTE projection, and expands the background packet
+capacity to 2048 words. It retains version 5 replay-camera identity. Rebuild both
+processes together; old diagnostic snapshots are not binary-compatible. A snapshot
 contains up to 512 models, HUD/sky words, full VRAM and original-screen pixels.
 The producer and viewer use nonblocking `flock` around exchange; contention skips
 visual publication/consumption rather than blocking the simulation. The viewer
@@ -158,3 +160,37 @@ transparency and HUD fidelity require their own comparisons.
 before drawing when applicable, with fallback to SDL V-sync. Asynchronous metrics,
 delayed GPU queries and camera traces help distinguish render-loop timing, source
 motion and submission variation. None directly measures physical scanout.
+
+## Selection menus and music test
+
+The USA dispatcher `8004EA4C` serves states 3/5; submode `8019501C`
+distinguishes the overview/transition (0–2), course selection (3), and car
+selection (5). Only these submodes with a matching active handler and models in
+the current frame qualify. Empty frames, submenu changes, unrecognized banks and
+inconsistent per-frame projections fall back to the original framebuffer.
+
+Previews use the existing 119-model CAR.RSO bank, already present in each locally
+extracted course asset file. They never draw the static race track or reconstruct
+race opponents. The producer captures GTE OFX/OFY/H (registers 24–26); the renderer
+uses an off-centre frustum at the selected output resolution. Model bounds culling
+is disabled for these small preview sets because race bounds assume a centred
+frustum. Preview parts have stable ordered identities for interpolation; projection
+and submenu changes cut rather than blend between unrelated views.
+
+Menu composition follows the verified first ordering table: slot 703 supplies
+48 textured Gouraud background tiles, model submissions occupy middle slots,
+and slots 0–5 supply the foreground UI. `background.h` decodes GT4 colour/UV data;
+the original low-resolution 3D packets are not copied into the foreground.
+The background fills the output while menu controls and preview centres retain
+4:3 coordinates centred within widescreen output.
+
+Music-test handler `800520A8` uses the race course and camera function `8002C290`.
+Its original car/scenery submissions feed the enhanced scene, with the music
+controls captured from the near ordering-table slots. Like replay, it requires
+camera readiness and does not synthesize opponents from stale race records.
+Original music playback, controls, simulation and game memory are unchanged.
+
+Synthetic bridge checks cover readiness, missing models, submenu transitions and
+projection disagreement. Real OpenGL tests cover preview placement in 4:3 and
+widescreen and exclusion of static course geometry. Live visual checks remain
+necessary for each menu selection, transition, material and music camera.
