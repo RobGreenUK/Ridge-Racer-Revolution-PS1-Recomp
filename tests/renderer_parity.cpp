@@ -107,6 +107,20 @@ int main(){
     auto background=decodeBackground({12,0x3c102030,0,0x00100000,0x00405060,320,0x000500ff,0x00708090,240u<<16,0x0000ff00,0x00a0b0c0,(240u<<16)|320,0x0000ffff});
     assert(background.size()==1&&background[0].textured&&background[0].page==5&&background[0].clut==16);
     assert(background[0].rgb[3][0]==192&&background[0].xy[3][1]==240);
+    // Authored car OT priorities must not inflate adjoining panels in world
+    // space. Scenery retains its existing surface separation.
+    frame.models.resize(1);frame.models[0].key=modelKey(1,0x8001B8CC,0);
+    mesh.models[0][0].bias=-20;
+    for(auto site:{0x8001B8CCu,0x8001B910u,0x8001BAA0u,0x8001BAF4u,0x8001BB38u,0x8001BD34u}){
+        auto part=frame.models[0];part.key=modelKey(1,site,4);assert(revolutionCarSurface(frame,part));
+    }
+    mesh.draw(r,frame,{},320,240);
+    bool carFace=false;for(const auto&face:mesh.faces)if(face.bias==-20){assert(face.layerOffset==0);carFace=true;}
+    assert(carFace);
+    frame.models[0].key=modelKey(1,0x80036B08,0);assert(!revolutionCarSurface(frame,frame.models[0]));
+    frame.menuScene=true;frame.cameraIdentity[1]=3;assert(!revolutionCarSurface(frame,frame.models[0]));
+    frame.cameraIdentity[1]=5;assert(revolutionCarSurface(frame,frame.models[0]));
+    frame.menuScene=false;frame.cameraIdentity={};mesh.models[0][0].bias=0;
     // Bounds must contain an actually visible point, including transformed
     // instances, camera rotation and the mirror's different projection.
     std::mt19937 random(42);std::uniform_real_distribution<float>d(-1000,1000);

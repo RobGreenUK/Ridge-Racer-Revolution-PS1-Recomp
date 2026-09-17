@@ -98,9 +98,10 @@ Verified selection-menu submodes also capture their model previews; other delive
 recorded-car limits and camera cuts.
 
 [shared.h](../src/scene/shared.h) defines a fixed-layout mapped structure with a
-magic/version, size, sequence, publication timestamp and bounded arrays. Version 6
-adds selection-menu identity and GTE projection, and expands the background packet
-capacity to 2048 words. It retains version 5 replay-camera identity. Rebuild both
+magic/version, size, sequence, publication timestamp and bounded arrays. Version 7
+adds a counted menu-backing prefix in the HUD packet buffer. It retains version 6
+menu identity, GTE projection and 2048-word background capacity, plus version 5
+replay-camera identity. Rebuild both
 processes together; old diagnostic snapshots are not binary-compatible. A snapshot
 contains up to 512 models, HUD/sky words, full VRAM and original-screen pixels.
 The producer and viewer use nonblocking `flock` around exchange; contention skips
@@ -178,8 +179,12 @@ frustum. Preview parts have stable ordered identities for interpolation; project
 and submenu changes cut rather than blend between unrelated views.
 
 Menu composition follows the verified first ordering table: slot 703 supplies
-48 textured Gouraud background tiles, model submissions occupy middle slots,
-and slots 0–5 supply the foreground UI. `background.h` decodes GT4 colour/UV data;
+48 textured Gouraud background tiles, slot 702 supplies setup summary/map panels
+and the car-preview backing rectangle, model submissions occupy middle slots,
+and slots 0–5 supply the foreground UI. The slot-702 packets are a counted prefix
+of the HUD buffer and are drawn before models; the remaining HUD packets draw
+after models. Capturing only slots 0–5 loses the setup summary as soon as the
+framebuffer-to-enhanced transition completes. `background.h` decodes GT4 colour/UV data;
 the original low-resolution 3D packets are not copied into the foreground.
 The background fills the output while menu controls and preview centres retain
 4:3 coordinates centred within widescreen output.
@@ -194,3 +199,16 @@ Synthetic bridge checks cover readiness, missing models, submenu transitions and
 projection disagreement. Real OpenGL tests cover preview placement in 4:3 and
 widescreen and exclusion of static course geometry. Live visual checks remain
 necessary for each menu selection, transition, material and music camera.
+
+### Car surface depth
+
+Car surfaces retain their actual geometry and small polygon-depth tie breaker,
+but do not use the world-space normal offset derived from PS1 ordering-table
+priority. That offset expands adjoining panels by different camera-depth amounts
+at grazing angles and can expose black wedges or cause angle-dependent flicker.
+The correction is limited to verified car submissions (`8001B8CC`, `8001B910`,
+`8001BAA0`, `8001BAF4`, `8001BB38`, `8001BD34`) and car-only menu submodes 0/1/5.
+Course previews share a generic menu submitter and are explicitly excluded.
+Scenery separation and the existing road contact tolerance remain unchanged.
+This does not repair or smooth original meshes, change their animation, or claim
+to eliminate every source-model seam or texture aliasing effect.

@@ -138,9 +138,9 @@ therefore keeps original replay car submissions instead of evaluating all eleven
 race opponents, which could resurrect stale cars. Physics, recorded motion, audio,
 replay duration and controls remain under the original game.
 
-Rebuild **both** runtime and viewer after updating: the current snapshot ABI is version 6
-(`RRV_SHARED_MAGIC=0x52525636`), retaining replay camera identity and adding menu
-projection/background capture. Older local raw
+Rebuild **both** runtime and viewer after updating: the current snapshot ABI is version 7
+(`RRV_SHARED_MAGIC=0x52525637`), retaining replay camera identity and adding menu
+projection/background capture and separate menu backing packets. Older local raw
 snapshot captures are not compatible with the new viewer. The normal Mac build
 also regenerates the overlay hooks from `game.toml`.
 
@@ -192,3 +192,10 @@ previews and music test, using private diagnostic state selection to exercise
 these paths without touching user saves. Captures confirm enhanced geometry and
 retained UI. Synthetic readiness and real OpenGL projection checks pass. This is
 not an exhaustive human playtest of every selectable car, course and music camera.
+
+The setup overview also captures its slot-702 backing layer before 3D, preserving
+the course map, summary labels and car-preview frame after the enhanced handoff.
+A limited car-depth correction removes the surface-normal expansion previously
+applied to car panels, while retaining polygon-depth tie breaking and existing
+scenery/road rules. Both fixes have synthetic regression coverage; setup was
+checked through its natural fade and the reported car views were compared locally.
