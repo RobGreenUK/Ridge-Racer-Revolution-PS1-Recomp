@@ -54,6 +54,7 @@ struct Bridge {
 };
 static Quat rotation(const int16_t*m){std::array<float,9>a;for(int i=0;i<9;i++)a[i]=m[i]/4096.f;return matrixRotation(a);}
 static Frame decode(const RRVSnapshot&s,bool mirror){
+    if(s.menu_back_count>s.hud_count)throw std::runtime_error("Invalid menu backdrop count");
     Frame f{};f.cameraIdentity={s.camera_valid,s.camera_mode,s.camera_target,s.camera_shot};f.time=double(s.cycles)/33868800.;f.flags=s.state;f.camera={float(s.camera[0]),float(s.camera[1]),float(s.camera[2])};f.rotation=rotation(mirror?s.mirror_matrix:s.matrix);
     f.menuScene=s.menu_scene;
     if(s.menu_scene){
@@ -69,7 +70,7 @@ static Frame decode(const RRVSnapshot&s,bool mirror){
         for(int c=0;c<3;c++){Vec v=rotate(inverse,{mat[c],mat[c+3],mat[c+6]});p.matrix[c]=v.x;p.matrix[c+3]=v.y;p.matrix[c+6]=v.z;}
         f.models.push_back(p);
     }
-    if(!mirror){f.background=decodeBackground(std::vector<uint32_t>(s.sky,s.sky+s.sky_count));f.hud.assign(s.hud,s.hud+s.hud_count);f.hudDisplayX=s.display_x;f.hudDisplayY=s.display_y;}
+    if(!mirror){f.background=decodeBackground(std::vector<uint32_t>(s.sky,s.sky+s.sky_count));f.menuBackdrop.assign(s.hud,s.hud+s.menu_back_count);f.hud.assign(s.hud+s.menu_back_count,s.hud+s.hud_count);f.hudDisplayX=s.display_x;f.hudDisplayY=s.display_y;}
     return f;
 }
 int main(int argc,char**argv)try{
@@ -181,6 +182,12 @@ if(e.type==SDL_EVENT_KEY_DOWN&&!e.key.repeat&&e.key.key==SDLK_G)showGraph=!showG
         SDL_SetRenderTarget(r,target);SDL_SetRenderDrawColor(r,0,16,128,255);SDL_RenderClear(r);
         if(ready&&mesh){
             sky.drawBackground(r,f,mesh->sky.vram,width,height);
+            if(f.menuScene&&!f.menuBackdrop.empty()){
+                // Swap packet lists without copying model or texture data.
+                f.hud.swap(f.menuBackdrop);
+                hud.draw(r,f,mesh->sky.vram,width,height,f.hudDisplayX,f.hudDisplayY);
+                f.hud.swap(f.menuBackdrop);
+            }
             mesh->focalScale=f.projection[2]/240.f;mesh->draw(r,f,f.camera,width,height);
             // Composite the mirror before HUD lettering and its border.
             if(s.mirror_enabled&&s.state==17){

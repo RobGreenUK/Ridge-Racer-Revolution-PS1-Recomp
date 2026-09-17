@@ -69,7 +69,7 @@ inline uint64_t modelKey(uint32_t owner,uint32_t site,uint32_t part){return (uin
 struct ModelPose { uint64_t key;uint32_t model;Vec position;std::array<float,9> matrix;uint32_t paletteOffset=0; };
 struct Sky {float pitch=0,yaw=0,roll=0;uint32_t mirror=0,clut=0,rgb=0,enabled=0;};
 struct Frame { double time; uint32_t flags; Vec camera; Quat rotation; Vec car; float yaw;std::vector<ModelPose> models;Sky sky;std::vector<uint32_t>hud;int hudDisplayX=0,hudDisplayY=0;std::vector<BackgroundQuad>background;
-    std::array<uint32_t,4> cameraIdentity{}; bool menuScene=false; std::array<float,3> projection{160,120,320}; };
+    std::array<uint32_t,4> cameraIdentity{}; bool menuScene=false; std::array<float,3> projection{160,120,320}; std::vector<uint32_t> menuBackdrop; };
 inline Frame interpolate(const Frame&a,const Frame&b,double time) {
     // State/camera discontinuities are cuts. Freeze previous scene until boundary.
     Vec delta=b.camera-a.camera;
@@ -80,7 +80,7 @@ inline Frame interpolate(const Frame&a,const Frame&b,double time) {
     float yawDelta=std::remainder(b.yaw-a.yaw,6.28318530718f);
     Frame result{time,a.flags,a.camera+(b.camera-a.camera)*t,slerp(a.rotation,b.rotation,t),
             a.car+(b.car-a.car)*t,a.yaw+yawDelta*t,{},{},{},0,0,{}};
-    result.cameraIdentity=a.cameraIdentity;result.menuScene=a.menuScene;result.projection=a.projection;
+    result.cameraIdentity=a.cameraIdentity;result.menuScene=a.menuScene;result.menuBackdrop=a.menuBackdrop;result.projection=a.projection;
     result.background=interpolateBackground(a.background,b.background,t);
     result.hud=a.hud;result.hudDisplayX=a.hudDisplayX;result.hudDisplayY=a.hudDisplayY;result.sky=a.sky;
     if(a.sky.enabled&&b.sky.enabled&&a.sky.mirror==b.sky.mirror) {
@@ -88,7 +88,7 @@ inline Frame interpolate(const Frame&a,const Frame&b,double time) {
         result.sky.yaw=a.sky.yaw+std::remainder(b.sky.yaw-a.sky.yaw,4096.f)*t;
         result.sky.roll=a.sky.roll+std::remainder(b.sky.roll-a.sky.roll,4096.f)*t;
     }
-    if(t>=1){result.hudDisplayX=b.hudDisplayX;result.hudDisplayY=b.hudDisplayY;result.hud=b.hud;result.sky=b.sky;result.models=b.models;return result;}
+    if(t>=1){result.menuBackdrop=b.menuBackdrop;result.hudDisplayX=b.hudDisplayX;result.hudDisplayY=b.hudDisplayY;result.hud=b.hud;result.sky=b.sky;result.models=b.models;return result;}
     // Model animation (notably spinning-wheel variants) may change the mesh
     // while the same component keeps moving. Interpolate its pose by identity.
     for(const auto&previous:a.models) {

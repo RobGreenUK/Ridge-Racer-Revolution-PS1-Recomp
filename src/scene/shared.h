@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-#define RRV_SHARED_MAGIC 0x52525636u
+#define RRV_SHARED_MAGIC 0x52525637u
 #define RRV_MODEL_CAP 512
 #define RRV_HUD_CAP 8192
 #define RRV_SKY_CAP 2048
@@ -18,6 +18,7 @@ struct RRVSnapshot {
     uint32_t screen[640*512];
     uint32_t camera_valid,camera_mode,camera_target,camera_shot;
     uint32_t menu_scene,menu_substate;int32_t projection[3];
+    uint32_t menu_back_count; // prefix of hud[] drawn before preview models
 };
 struct RRVShared {
     uint32_t magic,size;

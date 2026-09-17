@@ -142,7 +142,7 @@ static void boundary(const CPUState*cpu){
     frame.camera_shot=frame.camera_valid&&frame.camera_mode==0?psx_mod_read_word(0x801DE36C):0;
     for(unsigned i=0;i<3;i++)frame.camera[i]=(int32_t)psx_mod_read_word(0x801DE360+i*4);
     for(unsigned i=0;i<9;i++)frame.matrix[i]=(int16_t)psx_mod_read_half(0x801F9A5C+i*2);
-    frame.hud_count=frame.sky_count=0;frame.screen_width=frame.screen_height=0;frame.mirror_enabled=0;
+    frame.hud_count=frame.sky_count=frame.menu_back_count=0;frame.screen_width=frame.screen_height=0;frame.mirror_enabled=0;
     GpuDisplayInfo info;gpu_get_display_info(&info);frame.display_x=info.display_x;frame.display_y=info.display_y;
     for(unsigned i=0;i<9;i++)frame.mirror_matrix[i]=(i/3==1?1:-1)*frame.matrix[i];
     if(frame.valid){
@@ -151,7 +151,12 @@ static void boundary(const CPUState*cpu){
             // The queued DRAWENV targets the other framebuffer. Clip commands
             // use that origin, not the currently displayed DISPENV origin.
             frame.display_x=psx_mod_read_half(env);frame.display_y=psx_mod_read_half(env+2);
-            frame.hud_count=packets(env+0xcc+(frame.menu_scene?5:2)*4,~0u,frame.hud,RRV_HUD_CAP);
+            // Menu slot 702 contains the setup summary/map and the preview's
+            // backing panel. Preserve it behind 3D, between the tiled backdrop
+            // (703) and foreground controls (0..5).
+            if(frame.menu_scene)frame.menu_back_count=packets(env+0xcc+702*4,env+0xcc+701*4,frame.hud,RRV_HUD_CAP);
+            frame.hud_count=frame.menu_back_count;
+            frame.hud_count+=packets(env+0xcc+(frame.menu_scene?5:2)*4,~0u,frame.hud+frame.hud_count,RRV_HUD_CAP-frame.hud_count);
             // The minimap is in slot 2. Mirror lettering is in the second OT's
             // near list, composited after the main HUD by the original game.
             frame.hud_count+=packets(env+0xbcc+4,~0u,frame.hud+frame.hud_count,RRV_HUD_CAP-frame.hud_count);

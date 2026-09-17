@@ -78,6 +78,22 @@ static void replay_tests(void){
     hook(&cpu,0x8004EA4C);hook(&cpu,0x80053D24);
     cpu.gte_ctrl[24]+=1<<16;hook(&cpu,0x80053D24);boundary(&cpu);
     assert(!shared->frame.valid); // incompatible projection must fall back
+    // Backing panels in slot 702 must survive, without including the 3D
+    // middle slots. Near controls stay a separate foreground suffix.
+    word(0x80194F68,0x800D0000);
+    word(0x800D0000+0xcc+703*4,0xffffff);
+    word(0x800D0000+0xcc+702*4,0x000E0000);
+    word(0x800E0000,(3u<<24)|(0xD0000+0xcc+701*4));
+    word(0x800E0004,0x600000ff);word(0x800E0008,0);word(0x800E000C,0x00100010);
+    word(0x800D0000+0xcc+701*4,0x000E1000); // uncaptured model region
+    word(0x800E1000,(3u<<24)|0xffffff);
+    word(0x800D0000+0xcc+5*4,0x000E2000);
+    word(0x800E2000,(3u<<24)|0xffffff);
+    word(0x800E2004,0x6000ff00);word(0x800E2008,0);word(0x800E200C,0x00080008);
+    word(0x800D0000+0xbcc+4,0xffffff);word(0x800D0000+0xbcc+703*4,0xffffff);
+    hook(&cpu,0x8004EA4C);hook(&cpu,0x80053D24);boundary(&cpu);
+    assert(shared->frame.valid&&shared->frame.menu_back_count==4&&shared->frame.hud_count==8);
+    assert(shared->frame.hud[1]==0x600000ff&&shared->frame.hud[5]==0x6000ff00);
     half(0x8019501C,4);hook(&cpu,0x8004EA4C);hook(&cpu,0x80053D24);boundary(&cpu);
     assert(!shared->frame.valid); // unrelated menu stays original
     // The opt-in smoke driver must not skip the replay it is testing.

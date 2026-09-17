@@ -8,6 +8,13 @@
 #include <map>
 struct MeshQuad { MeshVertex v[4]; uint32_t texture,kind; int32_t bias;uint32_t window=0,dayOnly=0; };
 inline bool nightScenery(const Frame&){return false;}
+inline bool revolutionCarSurface(const Frame&frame,const ModelPose&pose){
+    // Verified car-only preview submodes. Course selection uses the same
+    // generic model submitter, so a submit address alone cannot classify menus.
+    if(frame.menuScene){auto sub=frame.cameraIdentity[1];return sub==0||sub==1||sub==5;}
+    auto site=(uint32_t(pose.key)>>3)|0x80000000u;
+    return site==0x8001B8CC||site==0x8001B910||site==0x8001BAA0||site==0x8001BAF4||site==0x8001BB38||site==0x8001BD34;
+}
 struct CourseMesh {
     bool fullCourse=true,perspective=true,smooth=false;float focalScale=320.f/240;
     struct Face {float depth;uint32_t texture;int32_t bias;float layerOffset;std::array<MeshVertex,3> vertices;size_t order;};
@@ -182,8 +189,12 @@ struct CourseMesh {
             for(size_t i=1;i+1<clippedCount;i++){
                 // Road contact has an eight-unit depth tolerance: authored tires
                 // and shadow planes extend slightly below the geometric road.
-                // Keep the car parts' mutual depth and all screen coordinates intact.
-                auto emit=[&](MeshVertex a,MeshVertex b,MeshVertex c){faces.push_back({(a.position.z+b.position.z+c.position.z)/3,texture,q.bias,float(q.bias)*.125f+(!pose&&q.kind==1?8.f:0.f),{a,b,c},faces.size()});};
+                // Car ordering-table biases are not surface-normal distances:
+                // expanding panels along their normals makes adjacent pieces
+                // incorrectly occlude each other at grazing views. Retain only
+                // the small polygon-depth tie breaker for verified car parts.
+                // Keep all vertex positions and the road tolerance intact.
+                auto emit=[&](MeshVertex a,MeshVertex b,MeshVertex c){faces.push_back({(a.position.z+b.position.z+c.position.z)/3,texture,q.bias,(pose&&revolutionCarSurface(frame,*pose)?0.f:float(q.bias)*.125f)+(!pose&&q.kind==1?8.f:0.f),{a,b,c},faces.size()});};
                 if(depthPass||!perspective)emit(clipped[0],clipped[i],clipped[i+1]);
                 else perspectiveTriangles(clipped[0],clipped[i],clipped[i+1],emit);
             }
