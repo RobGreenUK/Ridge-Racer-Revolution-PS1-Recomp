@@ -84,6 +84,18 @@ struct HudRenderer {
                 count=type==0x24?3:4;
                 page=(p[4]>>16)&0x1ff;t=texture(r,vram,page,p[2]>>16);if(!t)continue;
                 for(int i=0;i<count;i++){uint32_t uv=p[2+i*2];v[i]={xy(p[1+i*2]),cmd&1?SDL_FColor{1,1,1,1}:color(p[0],128),{(uv&255)/256.f,((uv>>8)&255)/256.f}};}
+                // PS1 rectangle tiles sample integer texels; SDL samples pixel
+                // centres. A reversed one-to-one UV span otherwise starts one
+                // texel early and leaks the neighbouring atlas tile at its end.
+                // Limit this correction to axis-aligned, unscaled FT4 tiles.
+                if(count==4){
+                    int x[4],y[4],u[4],tv[4];
+                    for(int i=0;i<4;i++){x[i]=int16_t(p[1+i*2]);y[i]=int16_t(p[1+i*2]>>16);u[i]=p[2+i*2]&255;tv[i]=(p[2+i*2]>>8)&255;}
+                    int w=x[1]-x[0],h=y[2]-y[0],du=u[1]-u[0],dv=tv[2]-tv[0];
+                    if(w>0&&h>0&&x[0]==x[2]&&x[1]==x[3]&&y[0]==y[1]&&y[2]==y[3]&&
+                       u[0]==u[2]&&u[1]==u[3]&&tv[0]==tv[1]&&tv[2]==tv[3]&&std::abs(du)==w&&std::abs(dv)==h)
+                        for(auto&vertex:v){if(du<0)vertex.tex_coord.x+=1.f/256;if(dv<0)vertex.tex_coord.y+=1.f/256;}
+                }
             }else if((type==0x28&&n==5)||(type==0x20&&n==4)){
                 count=type==0x20?3:4;for(int i=0;i<count;i++)v[i]={xy(p[i+1]),color(p[0],255),{0,0}};
             }else if((type==0x38&&n==8)||(type==0x30&&n==6)){

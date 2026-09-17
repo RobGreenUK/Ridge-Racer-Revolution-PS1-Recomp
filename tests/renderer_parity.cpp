@@ -60,10 +60,36 @@ static void hudLayoutRegression(SDL_Renderer*r){
     }
     hud.close();
 }
+static void mirroredTileRegression(SDL_Renderer*r){
+    HudRenderer hud;std::vector<uint16_t>vram(524288,0x001f);
+    for(int y=0;y<8;y++)for(int x=0;x<8;x++)vram[(48+y)*1024+32+x]=uint16_t((x+1)|((y+1)<<5));
+    auto xy=[](int x,int y){return uint32_t(x)|(uint32_t(y)<<16);};
+    for(int scale:{1,3})for(bool flipX:{false,true})for(bool flipY:{false,true}){
+        int width=320*scale,height=240*scale;
+        auto*target=SDL_CreateTexture(r,SDL_PIXELFORMAT_RGBA8888,SDL_TEXTUREACCESS_TARGET,width,height);assert(target);
+        SDL_SetRenderTarget(r,target);SDL_SetRenderDrawColor(r,0,0,0,255);SDL_RenderClear(r);
+        Frame frame{};frame.flags=3;frame.hud={9,0x2dffffff};
+        for(int i=0;i<4;i++){
+            frame.hud.push_back(xy(20+(i&1?8:0),30+(i&2?8:0)));
+            int u=flipX?39-(i&1?8:0):32+(i&1?8:0);
+            int v=flipY?55-(i&2?8:0):48+(i&2?8:0);
+            frame.hud.push_back(uint32_t(u)|(uint32_t(v)<<8)|(i==1?256u<<16:0));
+        }
+        hud.draw(r,frame,vram,width,height);auto actual=pixels(r);
+        SDL_SetRenderDrawColor(r,0,0,0,255);SDL_RenderClear(r);
+        for(int y=0;y<8;y++)for(int x=0;x<8;x++){
+            unsigned red=(flipX?7-x:x)+1,green=(flipY?7-y:y)+1;
+            SDL_SetRenderDrawColor(r,(red<<3)|(red>>2),(green<<3)|(green>>2),0,255);
+            SDL_FRect cell{float((20+x)*scale),float((30+y)*scale),float(scale),float(scale)};SDL_RenderFillRect(r,&cell);
+        }
+        assert(actual==pixels(r));SDL_SetRenderTarget(r,nullptr);SDL_DestroyTexture(target);
+    }
+    hud.close();
+}
 int main(){
     assert(SDL_Init(SDL_INIT_VIDEO));SDL_Window*w=SDL_CreateWindow("Renderer parity regression",320,240,SDL_WINDOW_HIDDEN);assert(w);
     SDL_Renderer*r=SDL_CreateRenderer(w,"opengl");assert(r);
-    hudLayoutRegression(r);
+    hudLayoutRegression(r);mirroredTileRegression(r);
     CourseMesh mesh;mesh.depthRenderer.measureGpu=false;
     for(auto colour:{0xffffffffu,0xff0000ffu}){
         auto*t=SDL_CreateTexture(r,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_STATIC,256,256);assert(t);

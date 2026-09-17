@@ -212,3 +212,14 @@ Course previews share a generic menu submitter and are explicitly excluded.
 Scenery separation and the existing road contact tolerance remain unchanged.
 This does not repair or smooth original meshes, change their animation, or claim
 to eliminate every source-model seam or texture aliasing effect.
+
+### Mirrored menu border tiles
+
+The selector and preview frames use axis-aligned FT4 atlas tiles with reversed
+UV spans for their bottom/right edges. PS1 integer-texel sampling and SDL's
+pixel-centre sampling differ by one texel on a reversed one-to-one span. The HUD
+renderer shifts each reversed UV axis by one texel for these tiles, avoiding
+neighbouring atlas pixels that otherwise appear as detached border lines. The
+correction requires matching rectangular geometry/UVs and unit source scale;
+it does not alter sloped, stretched or 3D polygons. Real OpenGL readback tests
+compare all four flip combinations against exact texel grids at 1× and 3×.
