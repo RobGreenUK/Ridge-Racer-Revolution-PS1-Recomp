@@ -2,9 +2,7 @@
 
 An unofficial **Ridge Racer Revolution (PlayStation, USA / SLUS-00214)**
 recompilation and enhanced-renderer preview for **Apple Silicon macOS**.
-Build locally with your own copy of the game. This is a separate project from
-[Ridge Racer PS1 Recomp](https://github.com/RobGreenUK/Ridge-Racer-PS1-Recomp),
-with its own game addresses, assets, settings, saves and Git history.
+Build locally with your own copy of the game. 
 
 PSXRecomp translates the original boot and racing executables into native code.
 The original game remains responsible for physics, timing, race logic, audio and
